@@ -35,7 +35,9 @@ export default function Register() {
     const res = await signUp(email, password);
     setBusy(false);
     if (!res.ok) {
-      Alert.alert(t('common.error'), t(res.errorKey));
+      Alert.alert(t('common.error'), res.raw ? `${t(res.errorKey)}
+
+${res.raw}` : t(res.errorKey));
       return;
     }
     if (res.needsConfirm) {

@@ -17,9 +17,39 @@ const supabaseAnonKey =
 
 export const isSupabaseConfigured = supabaseUrl.length > 0 && supabaseAnonKey.length > 0;
 
+// طبقة تخزين آمنة: لو فشل AsyncStorage لأي سبب على الجهاز، نرجع لذاكرة
+// مؤقتة بدل ما تفشل كل عمليات المصادقة بصمت قبل ما توصل للشبكة أصلًا.
+const memoryStore = new Map<string, string>();
+const safeStorage = {
+  getItem: async (key: string): Promise<string | null> => {
+    try {
+      const v = await AsyncStorage.getItem(key);
+      return v ?? memoryStore.get(key) ?? null;
+    } catch {
+      return memoryStore.get(key) ?? null;
+    }
+  },
+  setItem: async (key: string, value: string): Promise<void> => {
+    memoryStore.set(key, value);
+    try {
+      await AsyncStorage.setItem(key, value);
+    } catch {
+      // النسخة في الذاكرة تكفي لعمر الجلسة
+    }
+  },
+  removeItem: async (key: string): Promise<void> => {
+    memoryStore.delete(key);
+    try {
+      await AsyncStorage.removeItem(key);
+    } catch {
+      // تجاهل
+    }
+  },
+};
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: AsyncStorage,
+    storage: safeStorage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,

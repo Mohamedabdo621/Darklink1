@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase';
 // اللينك يفتح التطبيق على darklink://auth-callback ونكمل الجلسة من هناك.
 export type AuthResult =
   | { ok: true; needsConfirm: boolean }
-  | { ok: false; errorKey: string };
+  | { ok: false; errorKey: string; raw?: string };
 
 export type AuthLinkIntent = 'signup' | 'recovery';
 export type LinkResult =
@@ -57,7 +57,7 @@ export async function signUp(email: string, password: string): Promise<AuthResul
     password,
     options: { emailRedirectTo: authCallbackUrl() },
   });
-  if (error) return { ok: false, errorKey: mapError(error.message) };
+  if (error) return { ok: false, errorKey: mapError(error.message), raw: error.message };
   // جلسة فورية = تأكيد البريد غير مفعّل في المشروع؛ غير كده نستنى اللينك
   return { ok: true, needsConfirm: !data.session };
 }
@@ -67,7 +67,7 @@ export async function signIn(email: string, password: string): Promise<AuthResul
     email: email.trim(),
     password,
   });
-  if (error) return { ok: false, errorKey: mapError(error.message) };
+  if (error) return { ok: false, errorKey: mapError(error.message), raw: error.message };
   return { ok: true, needsConfirm: false };
 }
 
@@ -87,13 +87,13 @@ export async function requestPasswordReset(email: string): Promise<AuthResult> {
   const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
     redirectTo: authCallbackUrl(),
   });
-  if (error) return { ok: false, errorKey: mapError(error.message) };
+  if (error) return { ok: false, errorKey: mapError(error.message), raw: error.message };
   return { ok: true, needsConfirm: true };
 }
 
 export async function setNewPassword(password: string): Promise<AuthResult> {
   const { error } = await supabase.auth.updateUser({ password });
-  if (error) return { ok: false, errorKey: mapError(error.message) };
+  if (error) return { ok: false, errorKey: mapError(error.message), raw: error.message };
   return { ok: true, needsConfirm: false };
 }
 

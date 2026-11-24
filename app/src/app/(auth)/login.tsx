@@ -32,7 +32,9 @@ export default function Login() {
         router.push({ pathname: '/(auth)/check-email', params: { email, mode: 'signup' } });
         return;
       }
-      Alert.alert(t('common.error'), t(res.errorKey));
+      Alert.alert(t('common.error'), res.raw ? `${t(res.errorKey)}
+
+${res.raw}` : t(res.errorKey));
       return;
     }
     router.replace('/(tabs)/home');
