@@ -84,6 +84,25 @@ create policy profiles_self_update on public.profiles
     for update using (auth.uid() = id) with check (auth.uid() = id);
 -- لا insert/delete للعملاء: الإنشاء من الـ trigger، والحذف عبر حذف الحساب
 
+-- الحظر: لازم يتعرف قبل واجهة الاكتشاف ودالة الملف العام (بيشاوروا عليه)
+create table if not exists public.blocks (
+    blocker_id uuid not null references public.profiles (id) on delete cascade,
+    blocked_id uuid not null references public.profiles (id) on delete cascade,
+    created_at timestamptz not null default now(),
+    primary key (blocker_id, blocked_id),
+    check (blocker_id <> blocked_id)
+);
+alter table public.blocks enable row level security;
+drop policy if exists blocks_own on public.blocks;
+create policy blocks_own on public.blocks
+    for all using (auth.uid() = blocker_id) with check (auth.uid() = blocker_id);
+
+create or replace function public.is_blocked_pair(a uuid, b uuid)
+returns boolean language sql stable as $$
+    select exists (select 1 from public.blocks
+                   where (blocker_id = a and blocked_id = b)
+                      or (blocker_id = b and blocked_id = a)) $$;
+
 -- واجهة الاكتشاف الآمنة: تعرض الاسم المستعار أو الاسم العلني حسب الإعدادات فقط
 create or replace view public.discover_profiles as
 select
@@ -132,25 +151,8 @@ begin
         'created_at', p.created_at);
 end $$;
 
--- ============================================================ الحظر والبلاغات
-create table if not exists public.blocks (
-    blocker_id uuid not null references public.profiles (id) on delete cascade,
-    blocked_id uuid not null references public.profiles (id) on delete cascade,
-    created_at timestamptz not null default now(),
-    primary key (blocker_id, blocked_id),
-    check (blocker_id <> blocked_id)
-);
-alter table public.blocks enable row level security;
-drop policy if exists blocks_own on public.blocks;
-create policy blocks_own on public.blocks
-    for all using (auth.uid() = blocker_id) with check (auth.uid() = blocker_id);
-
-create or replace function public.is_blocked_pair(a uuid, b uuid)
-returns boolean language sql stable as $$
-    select exists (select 1 from public.blocks
-                   where (blocker_id = a and blocked_id = b)
-                      or (blocker_id = b and blocked_id = a)) $$;
-
+-- ============================================================ البلاغات
+-- (جدول blocks ودالة is_blocked_pair معرّفان أعلى، قبل واجهة الاكتشاف)
 create table if not exists public.reports (
     id               uuid primary key default gen_random_uuid(),
     reporter_id      uuid not null references public.profiles (id) on delete cascade,
