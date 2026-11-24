@@ -1,0 +1,205 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  FlatList,
+  Image,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { useTranslation } from 'react-i18next';
+import { Screen } from '../../components/ui';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
+import type { PublicProfile } from '../../lib/types';
+import {
+  fetchConversations,
+  fetchLastMessage,
+  fetchUnreadCount,
+} from '../../services/chat';
+import { avatarSignedUrl } from '../../services/profile';
+import { fetchPublicProfile } from '../../services/social';
+import { colors, fonts, radius, spacing } from '../../theme';
+
+interface ChatRow {
+  conversationId: string;
+  other: PublicProfile | null;
+  avatar: string | null;
+  preview: string;
+  time: string;
+  unread: number;
+  mine: boolean;
+}
+
+export default function Chats() {
+  const { t } = useTranslation();
+  const { profile: me } = useAuth();
+  const [rows, setRows] = useState<ChatRow[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const previewFor = useCallback(
+    (m: Awaited<ReturnType<typeof fetchLastMessage>>): string => {
+      if (!m) return '';
+      if (m.is_deleted) return t('chats.deleted');
+      switch (m.type) {
+        case 'voice':
+          return t('chats.voiceNote');
+        case 'image':
+          return t('chats.photo');
+        case 'video':
+          return t('chats.video');
+        case 'gift':
+          return t('chats.gift');
+        default:
+          return m.body ?? '';
+      }
+    },
+    [t],
+  );
+
+  const load = useCallback(async () => {
+    if (!me) return;
+    const convs = await fetchConversations();
+    const built: ChatRow[] = [];
+    for (const c of convs) {
+      const otherId = c.user_a === me.id ? c.user_b : c.user_a;
+      const [other, last, unread] = await Promise.all([
+        fetchPublicProfile(otherId),
+        fetchLastMessage(c.id),
+        fetchUnreadCount(c.id, me.id),
+      ]);
+      built.push({
+        conversationId: c.id,
+        other,
+        avatar: other ? await avatarSignedUrl(other.avatar_url) : null,
+        preview: previewFor(last),
+        time: last
+          ? new Date(last.created_at).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : '',
+        unread,
+        mine: last?.sender_id === me.id,
+      });
+    }
+    setRows(built);
+  }, [me, previewFor]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
+
+  useEffect(() => {
+    if (!me) return;
+    const channel = supabase
+      .channel('chats-list')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        () => load(),
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [me, load]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  };
+
+  return (
+    <Screen>
+      <Text style={styles.title}>{t('chats.title')}</Text>
+      <FlatList
+        data={rows}
+        keyExtractor={(r) => r.conversationId}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        ListEmptyComponent={<Text style={styles.empty}>{t('chats.empty')}</Text>}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() =>
+              router.push({ pathname: '/chat/[id]', params: { id: item.conversationId } })
+            }>
+            {item.avatar ? (
+              <Image source={{ uri: item.avatar }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, styles.avatarFallback]}>
+                <Text style={{ fontSize: 20 }}>👤</Text>
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.name} numberOfLines={1}>
+                {item.other?.shown_name ?? '—'}
+                {item.other?.is_vip ? ' 👑' : ''}
+              </Text>
+              <Text style={styles.preview} numberOfLines={1}>
+                {item.mine && item.preview ? t('chats.you') : ''}
+                {item.preview}
+              </Text>
+            </View>
+            <View style={{ alignItems: 'flex-end', gap: 5 }}>
+              <Text style={styles.time}>{item.time}</Text>
+              {item.unread > 0 ? (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{item.unread}</Text>
+                </View>
+              ) : null}
+            </View>
+          </TouchableOpacity>
+        )}
+      />
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  title: {
+    color: colors.text,
+    fontSize: fonts.sizes.xl,
+    fontWeight: fonts.weights.bold,
+    marginVertical: spacing.md,
+  },
+  empty: {
+    color: colors.muted,
+    textAlign: 'center',
+    marginTop: spacing.xxl,
+    fontSize: fonts.sizes.md,
+    lineHeight: 24,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.stroke,
+  },
+  avatar: { width: 52, height: 52, borderRadius: 26 },
+  avatarFallback: {
+    backgroundColor: colors.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  name: { color: colors.text, fontSize: fonts.sizes.md, fontWeight: fonts.weights.bold },
+  preview: { color: colors.muted, fontSize: fonts.sizes.sm, marginTop: 2 },
+  time: { color: colors.faint, fontSize: fonts.sizes.xs },
+  badge: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.full,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+  },
+  badgeText: { color: colors.white, fontSize: fonts.sizes.xs, fontWeight: '700' },
+});

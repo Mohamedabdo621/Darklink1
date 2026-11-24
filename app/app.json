@@ -1,0 +1,68 @@
+{
+  "expo": {
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#07010d",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.alex.darklink",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.POST_NOTIFICATIONS"
+      ],
+      "predictiveBackGestureEnabled": false
+    },
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": ""
+      },
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhmZm5tbmh5am93YXFia2dubm5sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTU1MTc0MjUsImV4cCI6MjExMTA5MzQyNX0.fG29hjVYb5IHU_JEegcc5HVMRvBndNiFp1ni_hkKE9A",
+      "supabaseUrl": "https://hffnmnhyjowaqbkgnnnl.supabase.co"
+    },
+    "icon": "./assets/icon.png",
+    "ios": {
+      "bundleIdentifier": "com.alex.darklink",
+      "supportsTablet": true
+    },
+    "name": "DARKLINK",
+    "newArchEnabled": true,
+    "orientation": "portrait",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "DARKLINK needs camera access so you can take photos and videos to share.",
+          "photosPermission": "DARKLINK needs access to your photos so you can send them in chats and set a profile picture."
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "DARKLINK needs microphone access only while you record a voice note."
+        }
+      ],
+      "expo-status-bar",
+      "expo-localization"
+    ],
+    "scheme": "darklink",
+    "slug": "darklink",
+    "splash": {
+      "backgroundColor": "#07010d",
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain"
+    },
+    "userInterfaceStyle": "dark",
+    "version": "1.0.0",
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

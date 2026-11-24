@@ -1,0 +1,142 @@
+import React, { useCallback, useEffect } from 'react';
+import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
+import { Screen } from '../components/ui';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
+import type { AppNotification } from '../lib/types';
+import { fetchNotifications, markAllNotificationsRead } from '../services/wallet';
+import { colors, fonts, spacing } from '../theme';
+
+const ICONS: Record<AppNotification['type'], string> = {
+  new_message: '💬',
+  voice_note: '🎤',
+  gift_received: '🎁',
+  purchase_success: '💎',
+  account: '👤',
+  security: '🛡',
+  app_update: '✨',
+};
+
+export default function Notifications() {
+  const { t } = useTranslation();
+  const { profile: me } = useAuth();
+  const [items, setItems] = React.useState<AppNotification[]>([]);
+
+  const load = useCallback(async () => {
+    if (!me) return;
+    setItems(await fetchNotifications(me.id));
+  }, [me]);
+
+  useEffect(() => {
+    // تحميل الإشعارات عند الفتح (نمط جلب بيانات قياسي)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load();
+    if (!me) return;
+    const channel = supabase
+      .channel('notifications-live')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${me.id}`,
+        },
+        () => load(),
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [me, load]);
+
+  useEffect(() => {
+    // عند مغادرة الشاشة تُعلّم الكل كمقروء
+    return () => {
+      if (me) markAllNotificationsRead(me.id);
+    };
+  }, [me]);
+
+  const textFor = (n: AppNotification): string => {
+    switch (n.type) {
+      case 'gift_received':
+        return t('notifications.giftReceived', {
+          gift: t(`gifts.${String(n.payload.gift ?? '')}`, { defaultValue: '🎁' }),
+        });
+      case 'purchase_success':
+        return t('notifications.purchaseSuccess', {
+          gems: Number(n.payload.gems ?? 0),
+        });
+      case 'voice_note':
+        return t('notifications.voiceNote');
+      case 'new_message':
+        return t('notifications.newMessage');
+      case 'security':
+        return t('notifications.security');
+      case 'app_update':
+        return t('notifications.appUpdate');
+      default:
+        return t('notifications.account');
+    }
+  };
+
+  const open = (n: AppNotification) => {
+    const cid = n.payload.conversation_id;
+    if ((n.type === 'new_message' || n.type === 'voice_note') && typeof cid === 'string') {
+      router.push({ pathname: '/chat/[id]', params: { id: cid } });
+    }
+  };
+
+  return (
+    <Screen>
+      <Text style={styles.title}>{t('notifications.title')}</Text>
+      <FlatList
+        data={items}
+        keyExtractor={(n) => n.id}
+        ListEmptyComponent={() => (
+          <Text style={styles.empty}>{t('notifications.empty')}</Text>
+        )}
+        renderItem={({ item }) => (
+          <TouchableOpacity style={styles.row} onPress={() => open(item)}>
+            <Text style={{ fontSize: 24 }}>{ICONS[item.type]}</Text>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  color: colors.text,
+                  fontSize: fonts.sizes.md,
+                  fontWeight: item.is_read ? '400' : '700',
+                }}>
+                {textFor(item)}
+              </Text>
+              <Text style={{ color: colors.faint, fontSize: fonts.sizes.xs }}>
+                {new Date(item.created_at).toLocaleString()}
+              </Text>
+            </View>
+            {!item.is_read ? <View style={styles.dot} /> : null}
+          </TouchableOpacity>
+        )}
+      />
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  title: {
+    color: colors.text,
+    fontSize: fonts.sizes.xl,
+    fontWeight: fonts.weights.bold,
+    marginVertical: spacing.md,
+  },
+  empty: { color: colors.muted, textAlign: 'center', marginTop: spacing.xl },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.stroke,
+  },
+  dot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.accent },
+});
