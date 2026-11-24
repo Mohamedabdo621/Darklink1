@@ -47,6 +47,53 @@ const safeStorage = {
   },
 };
 
+/** القيم كما يراها التطبيق فعليًا وقت التشغيل — لشاشة الفحص */
+export const resolvedConfig = {
+  url: supabaseUrl,
+  keyPrefix: supabaseAnonKey.slice(0, 14),
+  keyLen: supabaseAnonKey.length,
+};
+
+/**
+ * فحص اتصال خام (بدون supabase-js): يطبع القيم الفعلية ونتائج طلبات حقيقية
+ * عشان نعرف المشكلة في الإعدادات ولا الشبكة ولا طبقة العميل.
+ */
+export async function runConnectionDiagnostic(): Promise<string> {
+  const lines: string[] = [];
+  lines.push(`URL: ${supabaseUrl}`);
+  lines.push(`KEY: ${supabaseAnonKey.slice(0, 14)}... len=${supabaseAnonKey.length}`);
+  const errText = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message}` : String(e));
+  try {
+    const r = await fetch('https://api.ipify.org?format=json');
+    lines.push(`IP: ${r.status} ${(await r.text()).slice(0, 80)}`);
+  } catch (e) {
+    lines.push(`IP: THREW ${errText(e)}`);
+  }
+  try {
+    const r = await fetch(`${supabaseUrl}/auth/v1/health`, {
+      headers: { apikey: supabaseAnonKey },
+    });
+    lines.push(`HEALTH: ${r.status} ${(await r.text()).slice(0, 120)}`);
+  } catch (e) {
+    lines.push(`HEALTH: THREW ${errText(e)}`);
+  }
+  try {
+    const r = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email: 'diag@darklink.app', password: 'DiagPass123!' }),
+    });
+    lines.push(`LOGIN-TEST: ${r.status} ${(await r.text()).slice(0, 160)}`);
+  } catch (e) {
+    lines.push(`LOGIN-TEST: THREW ${errText(e)}`);
+  }
+  return lines.join('\n');
+}
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: safeStorage,
