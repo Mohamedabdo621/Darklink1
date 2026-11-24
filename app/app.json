@@ -21,7 +21,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": ""
+        "projectId": "811a8cb7-4ee8-4afc-9c62-19d374eccb44"
       },
       "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhmZm5tbmh5am93YXFia2dubm5sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTU1MTc0MjUsImV4cCI6MjExMTA5MzQyNX0.fG29hjVYb5IHU_JEegcc5HVMRvBndNiFp1ni_hkKE9A",
       "supabaseUrl": "https://hffnmnhyjowaqbkgnnnl.supabase.co"
@@ -63,6 +63,7 @@
     "version": "1.0.0",
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "owner": "mohamed12112s-team"
   }
 }
