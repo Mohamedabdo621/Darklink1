@@ -28,6 +28,84 @@ export async function hideConversation(conversationId: string): Promise<boolean>
   return !error;
 }
 
+/** تبديل تثبيت/كتم محادثة للمستخدم الحالي */
+export async function toggleConversationFlag(
+  conversationId: string,
+  flag: 'pinned_for' | 'muted_for',
+): Promise<boolean> {
+  const { error } = await supabase.rpc('toggle_conversation_flag', {
+    p_conversation: conversationId,
+    p_flag: flag,
+  });
+  return !error;
+}
+
+// ---------------- التفاعلات ----------------
+
+export const REACTION_EMOJIS = ['❤️', '😂', '😮', '👍', '🔥'] as const;
+
+interface ReactionRow {
+  message_id: string;
+  user_id: string;
+  emoji: string;
+}
+
+/** تجميع تفاعلات مجموعة رسائل: خريطة message_id -> ملخصات */
+export async function fetchReactions(
+  messageIds: string[],
+  myId: string,
+): Promise<Record<string, { emoji: string; count: number; mine: boolean }[]>> {
+  const out: Record<string, { emoji: string; count: number; mine: boolean }[]> = {};
+  if (!messageIds.length) return out;
+  const { data } = await supabase
+    .from('message_reactions')
+    .select('message_id, user_id, emoji')
+    .in('message_id', messageIds);
+  const byMsg = new Map<string, ReactionRow[]>();
+  for (const r of (data ?? []) as ReactionRow[]) {
+    const arr = byMsg.get(r.message_id) ?? [];
+    arr.push(r);
+    byMsg.set(r.message_id, arr);
+  }
+  for (const [mid, rows] of byMsg) {
+    const byEmoji = new Map<string, { count: number; mine: boolean }>();
+    for (const r of rows) {
+      const cur = byEmoji.get(r.emoji) ?? { count: 0, mine: false };
+      cur.count += 1;
+      if (r.user_id === myId) cur.mine = true;
+      byEmoji.set(r.emoji, cur);
+    }
+    out[mid] = [...byEmoji.entries()].map(([emoji, v]) => ({
+      emoji,
+      count: v.count,
+      mine: v.mine,
+    }));
+  }
+  return out;
+}
+
+/** إضافة/تغيير/إزالة تفاعلي على رسالة (نفس الإيموجي = إزالة) */
+export async function toggleReaction(
+  messageId: string,
+  myId: string,
+  emoji: string,
+  myCurrent: string | null,
+): Promise<boolean> {
+  if (myCurrent === emoji) {
+    const { error } = await supabase
+      .from('message_reactions')
+      .delete()
+      .eq('message_id', messageId)
+      .eq('user_id', myId);
+    return !error;
+  }
+  const { error } = await supabase.from('message_reactions').upsert(
+    { message_id: messageId, user_id: myId, emoji },
+    { onConflict: 'message_id,user_id' },
+  );
+  return !error;
+}
+
 export async function fetchLastMessage(conversationId: string): Promise<Message | null> {
   const { data } = await supabase
     .from('messages')

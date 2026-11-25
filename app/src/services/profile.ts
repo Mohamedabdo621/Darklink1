@@ -30,7 +30,12 @@ export async function updateMyProfile(
 /** تحديث إعداد خصوصية واحد فقط في كل مرة */
 export async function updatePrivacySetting(
   userId: string,
-  field: 'identity_mode' | 'discoverable' | 'share_photo' | 'share_info',
+  field:
+    | 'identity_mode'
+    | 'discoverable'
+    | 'share_photo'
+    | 'share_info'
+    | 'show_last_seen',
   value: string | boolean,
 ): Promise<boolean> {
   const { error } = await supabase

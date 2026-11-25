@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -11,6 +12,7 @@ import {
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Chip, NeonInput, Screen } from '../../components/ui';
+import { INTEREST_KEYS } from '../../lib/interests';
 import type { PublicProfile } from '../../lib/types';
 import { avatarSignedUrl } from '../../services/profile';
 import { fetchDiscover, fetchPublicProfile } from '../../services/social';
@@ -27,16 +29,24 @@ export default function Discover() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [ended, setEnded] = useState(false);
+  const [interest, setInterest] = useState<string | null>(null);
+  const interestRef = useRef<string | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async (p: number, s: string, replace: boolean) => {
     setLoading(true);
-    const rows = await fetchDiscover(p, s);
+    const rows = await fetchDiscover(p, s, interestRef.current);
     setLoading(false);
     setEnded(rows.length < 20);
     setItems((prev) => (replace ? rows : [...prev, ...rows]));
     setPage(p);
   }, []);
+
+  const pickInterest = (k: string | null) => {
+    setInterest(k);
+    interestRef.current = k;
+    load(0, search, true);
+  };
 
   useEffect(() => {
     // تحميل أول صفحة عند فتح الشاشة (نمط جلب بيانات قياسي)
@@ -75,6 +85,33 @@ export default function Discover() {
         placeholder={t('discover.searchPlaceholder')}
         autoCapitalize="none"
       />
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={{ marginBottom: spacing.md, flexGrow: 0 }}
+        contentContainerStyle={{ gap: spacing.sm }}>
+        <TouchableOpacity
+          onPress={() => pickInterest(null)}
+          style={[styles.filterChip, !interest && styles.filterChipActive]}>
+          <Text style={[styles.filterText, !interest && { color: colors.white }]}>
+            {t('interests.all')}
+          </Text>
+        </TouchableOpacity>
+        {INTEREST_KEYS.map((k) => (
+          <TouchableOpacity
+            key={k}
+            onPress={() => pickInterest(interest === k ? null : k)}
+            style={[styles.filterChip, interest === k && styles.filterChipActive]}>
+            <Text
+              style={[
+                styles.filterText,
+                interest === k && { color: colors.white },
+              ]}>
+              {t(`interests.${k}`)}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
       <FlatList
         data={items}
         keyExtractor={(item) => item.id}
@@ -151,6 +188,16 @@ function DiscoverCard({ item }: { item: PublicProfile }) {
 }
 
 const styles = StyleSheet.create({
+  filterChip: {
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    backgroundColor: colors.card,
+    borderRadius: radius.full,
+    paddingHorizontal: 13,
+    paddingVertical: 6,
+  },
+  filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  filterText: { color: colors.muted, fontSize: fonts.sizes.sm, fontWeight: fonts.weights.medium },
   title: {
     color: colors.text,
     fontSize: fonts.sizes.xl,

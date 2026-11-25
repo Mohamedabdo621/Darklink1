@@ -20,6 +20,7 @@ import {
   fetchLastMessage,
   fetchUnreadCount,
   hideConversation,
+  toggleConversationFlag,
 } from '../../services/chat';
 import { avatarSignedUrl } from '../../services/profile';
 import { blockUser, fetchPublicProfile } from '../../services/social';
@@ -33,6 +34,8 @@ interface ChatRow {
   time: string;
   unread: number;
   mine: boolean;
+  pinned: boolean;
+  muted: boolean;
 }
 
 export default function Chats() {
@@ -85,8 +88,12 @@ export default function Chats() {
           : '',
         unread,
         mine: last?.sender_id === me.id,
+        pinned: (c.pinned_for ?? []).includes(me.id),
+        muted: (c.muted_for ?? []).includes(me.id),
       });
     }
+    // المثبتة أولًا مع الحفاظ على ترتيب آخر رسالة داخل كل مجموعة
+    built.sort((a, b) => Number(b.pinned) - Number(a.pinned));
     setRows(built);
   }, [me, previewFor]);
 
@@ -153,6 +160,41 @@ export default function Chats() {
     ]);
   };
 
+  const onToggleFlag = async (
+    item: ChatRow,
+    flag: 'pinned_for' | 'muted_for',
+  ) => {
+    if (await toggleConversationFlag(item.conversationId, flag)) {
+      setRows((prev) => {
+        const next = prev.map((r) =>
+          r.conversationId === item.conversationId
+            ? {
+                ...r,
+                pinned: flag === 'pinned_for' ? !r.pinned : r.pinned,
+                muted: flag === 'muted_for' ? !r.muted : r.muted,
+              }
+            : r,
+        );
+        next.sort((a, b) => Number(b.pinned) - Number(a.pinned));
+        return next;
+      });
+    }
+  };
+
+  const onRowLongPress = (item: ChatRow) => {
+    appAlert(item.other?.shown_name ?? '', undefined, [
+      {
+        text: item.pinned ? `📌 ${t('chats.unpin')}` : `📌 ${t('chats.pin')}`,
+        onPress: () => onToggleFlag(item, 'pinned_for'),
+      },
+      {
+        text: item.muted ? `🔔 ${t('chats.unmute')}` : `🔇 ${t('chats.mute')}`,
+        onPress: () => onToggleFlag(item, 'muted_for'),
+      },
+      { text: t('common.cancel'), style: 'cancel' },
+    ]);
+  };
+
   const renderActions = (item: ChatRow) => (
     <View style={styles.actions}>
       <TouchableOpacity
@@ -190,6 +232,7 @@ export default function Chats() {
             renderRightActions={() => renderActions(item)}>
           <TouchableOpacity
             style={styles.row}
+            onLongPress={() => onRowLongPress(item)}
             onPress={() =>
               router.push({ pathname: '/chat/[id]', params: { id: item.conversationId } })
             }>
@@ -204,6 +247,8 @@ export default function Chats() {
               <Text style={styles.name} numberOfLines={1}>
                 {item.other?.shown_name ?? '—'}
                 {item.other?.is_vip ? ' 👑' : ''}
+                {item.pinned ? ' 📌' : ''}
+                {item.muted ? ' 🔇' : ''}
               </Text>
               <Text style={styles.preview} numberOfLines={1}>
                 {item.mine && item.preview ? t('chats.you') : ''}

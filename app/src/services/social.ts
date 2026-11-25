@@ -14,6 +14,7 @@ const PAGE = 20;
 export async function fetchDiscover(
   page: number,
   search: string,
+  interest?: string | null,
 ): Promise<PublicProfile[]> {
   let q = supabase
     .from('discover_profiles')
@@ -22,6 +23,7 @@ export async function fetchDiscover(
     .range(page * PAGE, page * PAGE + PAGE - 1);
   const s = search.trim();
   if (s) q = q.or(`shown_name.ilike.%${s}%,username.ilike.%${s}%`);
+  if (interest) q = q.contains('interests', [interest]);
   const { data, error } = await q;
   if (error) return [];
   return (data ?? []) as PublicProfile[];

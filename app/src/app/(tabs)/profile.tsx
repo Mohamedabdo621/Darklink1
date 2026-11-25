@@ -6,8 +6,9 @@ import { Chip, GlowCard, NeonButton, Screen } from '../../components/ui';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { shownNameOf } from '../../lib/types';
+import { ACHIEVEMENT_KEYS, fetchMyAchievements } from '../../services/features';
 import { avatarSignedUrl } from '../../services/profile';
-import { colors, fonts, spacing } from '../../theme';
+import { colors, fonts, radius, spacing } from '../../theme';
 
 export default function ProfileTab() {
   const { t } = useTranslation();
@@ -15,10 +16,12 @@ export default function ProfileTab() {
   const [avatar, setAvatar] = useState<string | null>(null);
   const [received, setReceived] = useState(0);
   const [sent, setSent] = useState(0);
+  const [achievements, setAchievements] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     if (!profile) return;
     setAvatar(await avatarSignedUrl(profile.avatar_url));
+    setAchievements(await fetchMyAchievements(profile.id));
     const r = await supabase
       .from('gift_sends')
       .select('id', { count: 'exact', head: true })
@@ -87,10 +90,29 @@ export default function ProfileTab() {
           </GlowCard>
         </View>
 
+        {/* الإنجازات */}
+        <Text style={styles.sectionTitle}>🏆 {t('achievements.title')}</Text>
+        <View style={styles.achGrid}>
+          {ACHIEVEMENT_KEYS.map((k) => {
+            const has = achievements.includes(k);
+            return (
+              <View key={k} style={[styles.achItem, !has && { opacity: 0.35 }]}>
+                <Text style={{ fontSize: 24 }}>{has ? '🏅' : '🔒'}</Text>
+                <Text style={styles.achLabel}>{t(`achievements.${k}`)}</Text>
+              </View>
+            );
+          })}
+        </View>
+
         <View style={{ gap: spacing.md, marginTop: spacing.lg, marginBottom: spacing.xl }}>
           <NeonButton
             title={t('profile.editProfile')}
             onPress={() => router.push('/edit-profile')}
+          />
+          <NeonButton
+            title={`👀 ${t('visitors.title')}`}
+            variant="ghost"
+            onPress={() => router.push('/profile-visitors')}
           />
           <NeonButton
             title={t('profile.privacySettings')}
@@ -143,6 +165,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.sm,
     gap: spacing.md,
+  },
+  sectionTitle: {
+    color: colors.text,
+    fontSize: fonts.sizes.lg,
+    fontWeight: fonts.weights.bold,
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  achGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  achItem: {
+    width: '31%',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    gap: 5,
+  },
+  achLabel: {
+    color: colors.text,
+    fontSize: fonts.sizes.xs,
+    textAlign: 'center',
+    lineHeight: 15,
   },
   statsRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
   stat: { flex: 1, alignItems: 'center' },

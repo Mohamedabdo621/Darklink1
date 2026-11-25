@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { appAlert } from '../lib/dialog';
+import { INTEREST_KEYS, MAX_INTERESTS } from '../lib/interests';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -31,6 +32,7 @@ function EditProfileForm({ profile }: { profile: Profile }) {
   const [username, setUsername] = useState(profile.username ?? '');
   const [bio, setBio] = useState(profile.bio ?? '');
   const [avatar, setAvatar] = useState<string | null>(null);
+  const [interests, setInterests] = useState<string[]>(profile.interests ?? []);
   const [busy, setBusy] = useState(false);
   const [usernameErr, setUsernameErr] = useState('');
 
@@ -77,6 +79,7 @@ function EditProfileForm({ profile }: { profile: Profile }) {
       display_name: displayName.trim() || null,
       username: uname || null,
       bio: bio.trim() || null,
+      interests,
     });
     setBusy(false);
     if (!res.ok) {
@@ -90,7 +93,12 @@ function EditProfileForm({ profile }: { profile: Profile }) {
   };
 
   const setPrivacy = async (
-    field: 'identity_mode' | 'discoverable' | 'share_photo' | 'share_info',
+    field:
+      | 'identity_mode'
+      | 'discoverable'
+      | 'share_photo'
+      | 'share_info'
+      | 'show_last_seen',
     value: string | boolean,
   ) => {
     const ok = await updatePrivacySetting(profile.id, field, value);
@@ -189,6 +197,49 @@ function EditProfileForm({ profile }: { profile: Profile }) {
             value={profile.share_info}
             onChange={(v) => setPrivacy('share_info', v)}
           />
+          <ToggleRow
+            title={t('editProfile.showLastSeen')}
+            desc={t('editProfile.showLastSeenDesc')}
+            value={profile.show_last_seen}
+            onChange={(v) => setPrivacy('show_last_seen', v)}
+          />
+        </GlowCard>
+
+        <GlowCard style={{ marginTop: spacing.md }}>
+          <Text style={styles.sectionTitle}>
+            🎯 {t('interests.title')} — {t('interests.pickUpTo')}
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+            {INTEREST_KEYS.map((k) => {
+              const active = interests.includes(k);
+              return (
+                <TouchableOpacity
+                  key={k}
+                  onPress={() =>
+                    setInterests((prev) =>
+                      active
+                        ? prev.filter((x) => x !== k)
+                        : prev.length >= MAX_INTERESTS
+                          ? prev
+                          : [...prev, k],
+                    )
+                  }
+                  style={[
+                    styles.interestChip,
+                    active && styles.interestChipActive,
+                  ]}>
+                  <Text
+                    style={{
+                      color: active ? colors.white : colors.muted,
+                      fontSize: fonts.sizes.sm,
+                      fontWeight: fonts.weights.medium,
+                    }}>
+                    {t(`interests.${k}`)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </GlowCard>
         <View style={{ height: spacing.xxl }} />
       </KeyboardAwareScrollView>
@@ -231,4 +282,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   modeChipActive: { backgroundColor: colors.primary, borderColor: colors.primaryBright },
+  sectionTitle: {
+    color: colors.text,
+    fontSize: fonts.sizes.md,
+    fontWeight: fonts.weights.bold,
+    marginBottom: spacing.md,
+  },
+  interestChip: {
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    backgroundColor: colors.card,
+    borderRadius: radius.full,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+  },
+  interestChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
 });

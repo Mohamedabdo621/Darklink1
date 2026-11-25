@@ -93,6 +93,25 @@ export interface Conversation {
   last_message_at: string;
   created_at: string;
   hidden_for: string[];
+  pinned_for: string[];
+  muted_for: string[];
+}
+
+/** تجميع تفاعلات رسالة واحدة للعرض */
+export interface ReactionSummary {
+  emoji: string;
+  count: number;
+  mine: boolean;
+}
+
+export interface Story {
+  id: string;
+  user_id: string;
+  type: 'text' | 'image';
+  body: string | null;
+  media_path: string | null;
+  created_at: string;
+  expires_at: string;
 }
 
 export type MessageType = 'text' | 'image' | 'video' | 'file' | 'voice' | 'gift';

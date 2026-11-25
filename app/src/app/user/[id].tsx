@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { giftImage } from '../../lib/giftAssets';
 import type { PublicProfile } from '../../lib/types';
 import { getOrCreateConversation } from '../../services/chat';
+import { recordProfileVisit } from '../../services/features';
 import { avatarSignedUrl } from '../../services/profile';
 import {
   blockUser,
@@ -28,6 +29,7 @@ export default function UserProfile() {
   const [avatar, setAvatar] = useState<string | null>(null);
   const [gifts, setGifts] = useState<ReceivedGiftSummary[]>([]);
   const [blocked, setBlocked] = useState(false);
+  const [seenText, setSeenText] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
@@ -40,9 +42,20 @@ export default function UserProfile() {
     setUser(u);
     setGifts(g);
     setBlocked(b);
-    if (u) setAvatar(await avatarSignedUrl(u.avatar_url));
+    if (u) {
+      setAvatar(await avatarSignedUrl(u.avatar_url));
+      recordProfileVisit(id);
+      if (u.last_seen_at) {
+        const seen = new Date(u.last_seen_at);
+        setSeenText(
+          Date.now() - seen.getTime() < 90000
+            ? `● ${t('chat.online')}`
+            : `${t('chat.lastSeen')} ${seen.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        );
+      } else setSeenText(null);
+    }
     setLoaded(true);
-  }, [id, me]);
+  }, [id, me, t]);
 
   useEffect(() => {
     // تحميل الملف عند الفتح (نمط جلب بيانات قياسي)
@@ -117,7 +130,26 @@ export default function UserProfile() {
             />
             {user.is_vip ? <Chip label="👑 VIP" gold /> : null}
           </View>
+          {seenText ? (
+            <Text style={{ color: colors.faint, fontSize: fonts.sizes.xs, marginTop: spacing.sm }}>
+              {seenText}
+            </Text>
+          ) : null}
           {user.bio ? <Text style={styles.bio}>{user.bio}</Text> : null}
+          {user.interests?.length ? (
+            <View
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                gap: 6,
+                justifyContent: 'center',
+                marginTop: spacing.sm,
+              }}>
+              {user.interests.map((k) => (
+                <Chip key={k} label={t(`interests.${k}`)} />
+              ))}
+            </View>
+          ) : null}
         </View>
 
         <Text style={styles.section}>🎁 {t('userProfile.receivedGifts')}</Text>

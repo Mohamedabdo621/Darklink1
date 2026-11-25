@@ -2,13 +2,30 @@ import React, { useCallback, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { Chip, GlowCard, Logo, Screen } from '../../components/ui';
+import { Chip, GlowCard, Logo, NeonButton, Screen } from '../../components/ui';
 import { useAuth } from '../../contexts/AuthContext';
+import { appAlert } from '../../lib/dialog';
 import { supabase } from '../../lib/supabase';
-import { shownNameOf, type Wallet } from '../../lib/types';
+import { shownNameOf, type PublicProfile, type Story, type Wallet } from '../../lib/types';
+import {
+  checkAchievements,
+  claimDailyReward,
+  fetchDailyStatus,
+  fetchStories,
+  type DailyStatus,
+} from '../../services/features';
 import { avatarSignedUrl } from '../../services/profile';
+import { fetchPublicProfile } from '../../services/social';
 import { fetchUnreadNotifications } from '../../services/wallet';
 import { colors, fonts, radius, spacing } from '../../theme';
+
+interface StoryGroup {
+  userId: string;
+  user: PublicProfile | null;
+  avatar: string | null;
+  count: number;
+  mine: boolean;
+}
 
 export default function Home() {
   const { t } = useTranslation();
@@ -16,6 +33,9 @@ export default function Home() {
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
+  const [daily, setDaily] = useState<DailyStatus | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
 
   const load = useCallback(async () => {
     if (!profile) return;
@@ -27,7 +47,52 @@ export default function Home() {
     if (data) setWallet(data as Wallet);
     setAvatar(await avatarSignedUrl(profile.avatar_url));
     setUnreadNotifs(await fetchUnreadNotifications(profile.id));
-  }, [profile]);
+    setDaily(await fetchDailyStatus());
+    // الستوري: تجميع حسب المستخدم
+    const stories = await fetchStories();
+    const byUser = new Map<string, Story[]>();
+    for (const s of stories) {
+      const arr = byUser.get(s.user_id) ?? [];
+      arr.push(s);
+      byUser.set(s.user_id, arr);
+    }
+    const groups: StoryGroup[] = [];
+    for (const [uid, arr] of byUser) {
+      const pub = uid === profile.id ? null : await fetchPublicProfile(uid);
+      groups.push({
+        userId: uid,
+        user: pub,
+        avatar: await avatarSignedUrl(
+          uid === profile.id ? profile.avatar_url : (pub?.avatar_url ?? null),
+        ),
+        count: arr.length,
+        mine: uid === profile.id,
+      });
+    }
+    groups.sort((a, b) => Number(b.mine) - Number(a.mine));
+    setStoryGroups(groups);
+    // إنجازات جديدة؟
+    const fresh = await checkAchievements();
+    if (fresh.length) {
+      appAlert(
+        '🏆 ' + t('achievements.unlocked'),
+        fresh.map((k) => '• ' + t(`achievements.${k}`)).join('\n'),
+      );
+    }
+  }, [profile, t]);
+
+  const onClaim = async () => {
+    setClaiming(true);
+    const res = await claimDailyReward();
+    setClaiming(false);
+    if (res?.claimed) {
+      appAlert(
+        '🎁 ' + t('home.dailyTitle'),
+        `${t('home.dailyGot')} ${res.amount} 💎 — ${res.streak} ${t('home.streakDays')}`,
+      );
+      load();
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -58,6 +123,59 @@ export default function Home() {
             ) : null}
           </TouchableOpacity>
         </View>
+
+        {/* شريط الستوري */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ marginBottom: spacing.md }}
+          contentContainerStyle={{ gap: spacing.md, paddingVertical: 2 }}>
+          <TouchableOpacity
+            style={styles.storyItem}
+            onPress={() => router.push('/story-new')}>
+            <View style={styles.storyRing}>
+              {avatar ? (
+                <Image source={{ uri: avatar }} style={styles.storyAvatar} />
+              ) : (
+                <View style={[styles.storyAvatar, styles.avatarFallback]}>
+                  <Text style={{ fontSize: 20 }}>👤</Text>
+                </View>
+              )}
+              <View style={styles.storyPlus}>
+                <Text style={{ color: colors.white, fontSize: 13, fontWeight: '700' }}>
+                  +
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.storyLabel}>{t('home.yourStory')}</Text>
+          </TouchableOpacity>
+          {storyGroups
+            .filter((g) => !g.mine)
+            .map((g) => (
+              <TouchableOpacity
+                key={g.userId}
+                style={styles.storyItem}
+                onPress={() =>
+                  router.push({
+                    pathname: '/story-viewer',
+                    params: { userId: g.userId },
+                  })
+                }>
+                <View style={styles.storyRing}>
+                  {g.avatar ? (
+                    <Image source={{ uri: g.avatar }} style={styles.storyAvatar} />
+                  ) : (
+                    <View style={[styles.storyAvatar, styles.avatarFallback]}>
+                      <Text style={{ fontSize: 20 }}>👤</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.storyLabel} numberOfLines={1}>
+                  {g.user?.shown_name ?? '—'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+        </ScrollView>
 
         <GlowCard style={styles.identityCard}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
@@ -102,6 +220,35 @@ export default function Home() {
           </Text>
         </GlowCard>
 
+        {/* المكافأة اليومية */}
+        <GlowCard style={styles.walletCard}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+            <Text style={{ fontSize: 30 }}>🎁</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontSize: fonts.sizes.md, fontWeight: fonts.weights.bold }}>
+                {t('home.dailyTitle')}
+              </Text>
+              <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm, marginTop: 2 }}>
+                {daily && daily.streak > 0
+                  ? `🔥 ${daily.streak} ${t('home.streakDays')} — `
+                  : ''}
+                {daily?.claimable
+                  ? `+${daily.next_amount} 💎`
+                  : t('home.dailyClaimed')}
+              </Text>
+            </View>
+          </View>
+          {daily?.claimable ? (
+            <View style={{ marginTop: spacing.md }}>
+              <NeonButton
+                title={t('home.dailyClaim')}
+                onPress={onClaim}
+                loading={claiming}
+              />
+            </View>
+          ) : null}
+        </GlowCard>
+
         <Text style={styles.sectionTitle}>{t('home.shortcuts')}</Text>
         <View style={styles.grid}>
           <Shortcut
@@ -128,6 +275,11 @@ export default function Home() {
             emoji="👤"
             label={t('tabs.profile')}
             onPress={() => router.push('/(tabs)/profile')}
+          />
+          <Shortcut
+            emoji="🏆"
+            label={t('home.leaderboard')}
+            onPress={() => router.push('/leaderboard')}
           />
         </View>
       </ScrollView>
@@ -171,6 +323,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
+  },
+  storyItem: { alignItems: 'center', width: 68 },
+  storyRing: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    borderWidth: 2,
+    borderColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  storyAvatar: { width: 54, height: 54, borderRadius: 27 },
+  storyPlus: {
+    position: 'absolute',
+    bottom: -2,
+    end: -2,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.bg,
+  },
+  storyLabel: {
+    color: colors.text,
+    fontSize: fonts.sizes.xs,
+    marginTop: 5,
+    textAlign: 'center',
   },
   identityCard: { marginBottom: spacing.md },
   avatar: { width: 56, height: 56, borderRadius: 28 },

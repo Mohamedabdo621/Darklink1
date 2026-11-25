@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Image, Linking, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { appAlert, appPrompt } from '../../lib/dialog';
 import {
   AudioModule,
@@ -21,13 +21,16 @@ import { supabase } from '../../lib/supabase';
 import type { Message, PublicProfile, ReplyPreview } from '../../lib/types';
 import {
   fetchMessages,
+  fetchReactions,
   fetchReplyPreview,
   markConversationRead,
   mediaSignedUrl,
+  REACTION_EMOJIS,
   sendMediaMessage,
   sendTextMessage,
   sendVoiceMessage,
   softDeleteMessage,
+  toggleReaction,
   uploadChatFile,
 } from '../../services/chat';
 import { avatarSignedUrl } from '../../services/profile';
@@ -56,9 +59,17 @@ export default function ChatScreen() {
   const [blockedByMe, setBlockedByMe] = useState(false);
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const inputRef = useRef<any>(null);
   const swipeRefs = useRef(new Map<string, { close: () => void }>());
+  const [reactions, setReactions] = useState<
+    Record<string, { emoji: string; count: number; mine: boolean }[]>
+  >({});
+  const [actionMsg, setActionMsg] = useState<Message | null>(null);
+  const [typing, setTyping] = useState(false);
+  const [otherOnline, setOtherOnline] = useState(false);
+  const channelRef = useRef<any>(null);
+  const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTypingSent = useRef(0);
 
   // ---- التسجيل الصوتي
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -104,6 +115,7 @@ export default function ChatScreen() {
     const msgs = await fetchMessages(conversationId);
     setMessages(msgs);
     loadGiftInfo(msgs);
+    setReactions(await fetchReactions(msgs.map((m) => m.id), me.id));
     await markConversationRead(conversationId);
   }, [conversationId, me, loadGiftInfo]);
 
@@ -113,10 +125,40 @@ export default function ChatScreen() {
     load();
   }, [load]);
 
+  // تحديث دوري لآخر ظهور الطرف الآخر
+  useEffect(() => {
+    if (!otherId) return;
+    const iv = setInterval(async () => {
+      const pub = await fetchPublicProfile(otherId);
+      if (pub) setOther(pub);
+    }, 30000);
+    return () => clearInterval(iv);
+  }, [otherId]);
+
+  // «متصل الآن» تُحسب في تأثير جانبي (آخر ظهور خلال ٩٠ ثانية)
+  useEffect(() => {
+    const calc = () =>
+      setOtherOnline(
+        other?.last_seen_at
+          ? Date.now() - new Date(other.last_seen_at).getTime() < 90000
+          : false,
+      );
+    calc();
+    const iv = setInterval(calc, 30000);
+    return () => clearInterval(iv);
+  }, [other?.last_seen_at]);
+
   useEffect(() => {
     if (!conversationId || !me) return;
     const channel = supabase
       .channel(`chat-${conversationId}`)
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        if (payload?.from && payload.from !== me.id) {
+          setTyping(true);
+          if (typingTimeout.current) clearTimeout(typingTimeout.current);
+          typingTimeout.current = setTimeout(() => setTyping(false), 3200);
+        }
+      })
       .on(
         'postgres_changes',
         {
@@ -150,8 +192,24 @@ export default function ChatScreen() {
         },
       )
       .subscribe();
+    channelRef.current = channel;
+    const rChannel = supabase
+      .channel(`reactions-${conversationId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'message_reactions' },
+        async (payload) => {
+          const row = (payload.new ?? payload.old) as { message_id?: string };
+          if (!row?.message_id) return;
+          const fresh = await fetchReactions([row.message_id], me.id);
+          setReactions((prev) => ({ ...prev, ...fresh }));
+        },
+      )
+      .subscribe();
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(rChannel);
+      channelRef.current = null;
     };
   }, [conversationId, me, loadGiftInfo]);
 
@@ -178,6 +236,46 @@ export default function ChatScreen() {
 
   const nameFor = (senderId: string): string =>
     senderId === me.id ? t('chat.youName') : (other?.shown_name ?? '');
+
+  /** كتابة: تحديث النص + بث «بيكتب» مثبّتًا كل ٢.٥ ثانية */
+  const onType = (v: string) => {
+    setText(v);
+    if (v.trim() && Date.now() - lastTypingSent.current > 2500) {
+      lastTypingSent.current = Date.now();
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: { from: me.id },
+      });
+    }
+  };
+
+  const onReact = async (m: Message, emoji: string) => {
+    const myCurrent = reactions[m.id]?.find((r) => r.mine)?.emoji ?? null;
+    // تحديث متفائل
+    setReactions((prev) => {
+      const cur = (prev[m.id] ?? []).map((r) => ({ ...r }));
+      const mineIdx = cur.findIndex((r) => r.mine);
+      if (mineIdx >= 0) {
+        cur[mineIdx].count -= 1;
+        if (cur[mineIdx].count <= 0) cur.splice(mineIdx, 1);
+      }
+      if (myCurrent !== emoji) {
+        const ex = cur.find((r) => r.emoji === emoji);
+        if (ex) {
+          ex.count += 1;
+          ex.mine = true;
+        } else cur.push({ emoji, count: 1, mine: true });
+      }
+      return { ...prev, [m.id]: cur };
+    });
+    Haptics.selectionAsync().catch(() => {});
+    const ok = await toggleReaction(m.id, me.id, emoji, myCurrent);
+    if (!ok) {
+      const fresh = await fetchReactions([m.id], me.id);
+      setReactions((prev) => ({ ...prev, ...fresh }));
+    }
+  };
 
   const startReply = (m: Message) => {
     if (m.is_deleted) return;
@@ -310,49 +408,34 @@ export default function ChatScreen() {
   };
 
   const onLongPress = (m: Message) => {
-    const mine = m.sender_id === me.id;
-    const options: {
-      text: string;
-      style?: 'destructive' | 'cancel';
-      onPress?: () => void;
-    }[] = [
-      { text: t('common.cancel'), style: 'cancel' },
-    ];
-    if (!m.is_deleted) {
-      options.unshift({
-        text: `↩ ${t('chat.reply')}`,
-        onPress: () => startReply(m),
-      });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setActionMsg(m);
+  };
+
+  const sheetDelete = async (m: Message) => {
+    setActionMsg(null);
+    if (await softDeleteMessage(m.id)) {
+      setMessages((prev) =>
+        prev.map((x) =>
+          x.id === m.id ? { ...x, is_deleted: true, body: null, media_path: null } : x,
+        ),
+      );
     }
-    if (mine && !m.is_deleted) {
-      options.unshift({
-        text: t('chat.deleteMessage'),
-        style: 'destructive',
-        onPress: async () => {
-          if (await softDeleteMessage(m.id)) {
-            setMessages((prev) =>
-              prev.map((x) =>
-                x.id === m.id ? { ...x, is_deleted: true, body: null, media_path: null } : x,
-              ),
-            );
-          }
-        },
-      });
-    }
-    if (!mine) {
-      options.unshift({
-        text: t('chat.reportMessage'),
-        onPress: () => {
-          appPrompt(t('userProfile.report'), t('userProfile.reportReason'), t('common.send'), async (reason) => {
-            if (!reason?.trim()) return;
-            if (await reportUser(me.id, m.sender_id, reason.trim(), m.id)) {
-              appAlert('✓', t('userProfile.reportSent'));
-            }
-          });
-        },
-      });
-    }
-    appAlert('', '', options);
+  };
+
+  const sheetReport = (m: Message) => {
+    setActionMsg(null);
+    appPrompt(
+      t('userProfile.report'),
+      t('userProfile.reportReason'),
+      t('common.send'),
+      async (reason) => {
+        if (!reason?.trim()) return;
+        if (await reportUser(me.id, m.sender_id, reason.trim(), m.id)) {
+          appAlert('✓', t('userProfile.reportSent'));
+        }
+      },
+    );
   };
 
   return (
@@ -374,10 +457,27 @@ export default function ChatScreen() {
               <Text>👤</Text>
             </View>
           )}
-          <Text style={styles.headerName}>
-            {other?.shown_name ?? '...'}
-            {other?.is_vip ? ' 👑' : ''}
-          </Text>
+          <View>
+            <Text style={styles.headerName}>
+              {other?.shown_name ?? '...'}
+              {other?.is_vip ? ' 👑' : ''}
+            </Text>
+            {typing ? (
+              <Text style={styles.statusTyping}>{t('chat.typing')}</Text>
+            ) : other?.last_seen_at ? (
+              otherOnline ? (
+                <Text style={styles.statusOnline}>● {t('chat.online')}</Text>
+              ) : (
+                <Text style={styles.statusSeen}>
+                  {t('chat.lastSeen')}{' '}
+                  {new Date(other.last_seen_at).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </Text>
+              )
+            ) : null}
+          </View>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() =>
@@ -405,6 +505,14 @@ export default function ChatScreen() {
               gift={item.gift_send_id ? giftMap[item.gift_send_id] : undefined}
               replyName={item.reply_preview ? nameFor(item.reply_preview.sender_id) : undefined}
               replySnippet={item.reply_preview ? snippetFor(item.reply_preview) : undefined}
+              reactions={reactions[item.id] ?? []}
+              onReactPress={(emoji) => onReact(item, emoji)}
+              onMediaPress={(url, kind) =>
+                router.push({
+                  pathname: '/media-viewer',
+                  params: { url, type: kind },
+                })
+              }
               onLongPress={() => onLongPress(item)}
             />
           );
@@ -508,7 +616,7 @@ export default function ChatScreen() {
           <TextInput
             ref={inputRef}
             value={text}
-            onChangeText={setText}
+            onChangeText={onType}
             placeholder={t('chat.typeMessage')}
             placeholderTextColor={colors.faint}
             style={styles.input}
@@ -528,6 +636,70 @@ export default function ChatScreen() {
         </View>
       )}
       </KeyboardAvoidingView>
+
+      {/* ورقة إجراءات الرسالة: تفاعلات + رد + حذف/إبلاغ */}
+      <Modal
+        transparent
+        visible={!!actionMsg}
+        animationType="fade"
+        onRequestClose={() => setActionMsg(null)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setActionMsg(null)}>
+          <Pressable style={styles.sheet} onPress={() => {}}>
+            {actionMsg && !actionMsg.is_deleted ? (
+              <View style={styles.emojiRow}>
+                {REACTION_EMOJIS.map((e) => {
+                  const active =
+                    reactions[actionMsg.id]?.find((r) => r.mine)?.emoji === e;
+                  return (
+                    <TouchableOpacity
+                      key={e}
+                      style={[styles.emojiBtn, active && styles.emojiBtnActive]}
+                      onPress={() => {
+                        onReact(actionMsg, e);
+                        setActionMsg(null);
+                      }}>
+                      <Text style={{ fontSize: 26 }}>{e}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : null}
+            {actionMsg && !actionMsg.is_deleted ? (
+              <TouchableOpacity
+                style={styles.sheetRow}
+                onPress={() => {
+                  startReply(actionMsg);
+                  setActionMsg(null);
+                }}>
+                <Text style={styles.sheetRowText}>↩ {t('chat.reply')}</Text>
+              </TouchableOpacity>
+            ) : null}
+            {actionMsg && actionMsg.sender_id === me.id && !actionMsg.is_deleted ? (
+              <TouchableOpacity
+                style={styles.sheetRow}
+                onPress={() => sheetDelete(actionMsg)}>
+                <Text style={[styles.sheetRowText, { color: colors.danger }]}>
+                  🗑 {t('chat.deleteMessage')}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            {actionMsg && actionMsg.sender_id !== me.id ? (
+              <TouchableOpacity
+                style={styles.sheetRow}
+                onPress={() => sheetReport(actionMsg)}>
+                <Text style={styles.sheetRowText}>🚩 {t('chat.reportMessage')}</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              style={styles.sheetRow}
+              onPress={() => setActionMsg(null)}>
+              <Text style={[styles.sheetRowText, { color: colors.muted }]}>
+                {t('common.cancel')}
+              </Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -538,6 +710,9 @@ function MessageBubble({
   gift,
   replyName,
   replySnippet,
+  reactions,
+  onReactPress,
+  onMediaPress,
   onLongPress,
 }: {
   m: Message;
@@ -545,6 +720,9 @@ function MessageBubble({
   gift?: GiftInfo;
   replyName?: string;
   replySnippet?: string;
+  reactions: { emoji: string; count: number; mine: boolean }[];
+  onReactPress: (emoji: string) => void;
+  onMediaPress: (url: string, kind: 'image' | 'video') => void;
   onLongPress: () => void;
 }) {
   const { t } = useTranslation();
@@ -586,12 +764,14 @@ function MessageBubble({
           <Text style={[styles.msgText, mine && { color: colors.white }]}>{m.body}</Text>
         ) : m.type === 'image' ? (
           mediaUrl ? (
-            <Image source={{ uri: mediaUrl }} style={styles.mediaImg} resizeMode="cover" />
+            <TouchableOpacity onPress={() => onMediaPress(mediaUrl, 'image')}>
+              <Image source={{ uri: mediaUrl }} style={styles.mediaImg} resizeMode="cover" />
+            </TouchableOpacity>
           ) : (
             <Text style={styles.msgText}>🖼 …</Text>
           )
         ) : m.type === 'video' ? (
-          <TouchableOpacity onPress={() => mediaUrl && Linking.openURL(mediaUrl)}>
+          <TouchableOpacity onPress={() => mediaUrl && onMediaPress(mediaUrl, 'video')}>
             <View style={[styles.mediaImg, styles.videoTile]}>
               <Text style={{ fontSize: 40 }}>▶️</Text>
               <Text style={{ color: colors.white, fontSize: fonts.sizes.xs }}>
@@ -611,6 +791,21 @@ function MessageBubble({
             <Text style={[styles.msgText, mine && { color: colors.white }]}>
               {gift ? t(`gifts.${gift.name_key}`) : t('chats.gift')}
             </Text>
+          </View>
+        ) : null}
+        {reactions.length ? (
+          <View style={styles.reactionRow}>
+            {reactions.map((r) => (
+              <TouchableOpacity
+                key={r.emoji}
+                style={[styles.reactionChip, r.mine && styles.reactionChipMine]}
+                onPress={() => onReactPress(r.emoji)}>
+                <Text style={{ fontSize: 12 }}>
+                  {r.emoji}
+                  {r.count > 1 ? ` ${r.count}` : ''}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         ) : null}
         <Text style={[styles.time, mine && { color: 'rgba(255,255,255,0.7)' }]}>
@@ -642,6 +837,52 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerName: { color: colors.text, fontSize: fonts.sizes.md, fontWeight: fonts.weights.bold },
+  statusTyping: { color: colors.accent, fontSize: fonts.sizes.xs, marginTop: 1 },
+  statusOnline: { color: '#4ade80', fontSize: fonts.sizes.xs, marginTop: 1 },
+  statusSeen: { color: colors.faint, fontSize: fonts.sizes.xs, marginTop: 1 },
+  reactionRow: { flexDirection: 'row', gap: 4, marginTop: 5, flexWrap: 'wrap' },
+  reactionChip: {
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    borderRadius: radius.full,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  reactionChipMine: { borderColor: colors.accent, backgroundColor: 'rgba(217,70,239,0.18)' },
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(3,0,8,0.6)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: colors.surface,
+    borderTopStartRadius: 22,
+    borderTopEndRadius: 22,
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    padding: spacing.md,
+    paddingBottom: spacing.xl,
+  },
+  emojiRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.stroke,
+    marginBottom: spacing.xs,
+  },
+  emojiBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+  },
+  emojiBtnActive: { borderWidth: 1.5, borderColor: colors.accent },
+  sheetRow: { paddingVertical: 13 },
+  sheetRowText: { color: colors.text, fontSize: fonts.sizes.md, textAlign: 'left' },
   replyAction: {
     width: 52,
     alignItems: 'center',
