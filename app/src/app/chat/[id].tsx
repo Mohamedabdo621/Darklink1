@@ -1,15 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Alert,
-  FlatList,
-  Image,
-  Linking,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { FlatList, Image, Linking, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { appAlert, appPrompt } from '../../lib/dialog';
 import {
   AudioModule,
   RecordingPresets,
@@ -20,13 +11,17 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import * as Haptics from 'expo-haptics';
+import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import VoiceBubble from '../../components/VoiceBubble';
 import { useAuth } from '../../contexts/AuthContext';
 import { giftImage } from '../../lib/giftAssets';
 import { supabase } from '../../lib/supabase';
-import type { Message, PublicProfile } from '../../lib/types';
+import type { Message, PublicProfile, ReplyPreview } from '../../lib/types';
 import {
   fetchMessages,
+  fetchReplyPreview,
   markConversationRead,
   mediaSignedUrl,
   sendMediaMessage,
@@ -60,6 +55,10 @@ export default function ChatScreen() {
   const [text, setText] = useState('');
   const [blockedByMe, setBlockedByMe] = useState(false);
   const [sending, setSending] = useState(false);
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const inputRef = useRef<any>(null);
+  const swipeRefs = useRef(new Map<string, { close: () => void }>());
 
   // ---- التسجيل الصوتي
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -138,6 +137,15 @@ export default function ChatScreen() {
           if (payload.eventType === 'INSERT') {
             loadGiftInfo([row]);
             if (row.sender_id !== me.id) markConversationRead(conversationId);
+            if (row.reply_to_id) {
+              fetchReplyPreview(row.reply_to_id).then((p) => {
+                if (p) {
+                  setMessages((prev) =>
+                    prev.map((x) => (x.id === row.id ? { ...x, reply_preview: p } : x)),
+                  );
+                }
+              });
+            }
           }
         },
       )
@@ -149,21 +157,68 @@ export default function ChatScreen() {
 
   if (!me || !conversationId) return <View style={styles.root} />;
 
-  const failSend = () => Alert.alert(t('common.error'), t('chat.blockedNotice'));
+  const failSend = () => appAlert(t('common.error'), t('chat.blockedNotice'));
+
+  /** نص مختصر لأي رسالة — بيُستخدم في الاقتباس وشريط الرد */
+  const snippetFor = (m: ReplyPreview | Message): string => {
+    if (m.is_deleted) return t('chats.deleted');
+    switch (m.type) {
+      case 'voice':
+        return t('chats.voiceNote');
+      case 'image':
+        return t('chats.photo');
+      case 'video':
+        return t('chats.video');
+      case 'gift':
+        return t('chats.gift');
+      default:
+        return m.body ?? '';
+    }
+  };
+
+  const nameFor = (senderId: string): string =>
+    senderId === me.id ? t('chat.youName') : (other?.shown_name ?? '');
+
+  const startReply = (m: Message) => {
+    if (m.is_deleted) return;
+    setReplyTo(m);
+    Haptics.selectionAsync().catch(() => {});
+    setTimeout(() => inputRef.current?.focus(), 60);
+  };
+
+  /** يربط معاينة الرد بالرسالة المرسلة محليًا ويصفّي حالة الرد */
+  const attachReply = (m: Message): Message => {
+    if (!replyTo || m.reply_to_id !== replyTo.id) return m;
+    return {
+      ...m,
+      reply_preview: {
+        id: replyTo.id,
+        sender_id: replyTo.sender_id,
+        type: replyTo.type,
+        body: replyTo.body,
+        is_deleted: replyTo.is_deleted,
+      },
+    };
+  };
 
   const onSendText = async () => {
     if (!text.trim() || sending) return;
     const body = text;
+    const replyId = replyTo?.id ?? null;
     setText('');
     setSending(true);
-    const m = await sendTextMessage(conversationId, me.id, body);
+    const m = await sendTextMessage(conversationId, me.id, body, replyId);
     setSending(false);
     if (!m) {
       setText(body);
       failSend();
       return;
     }
-    setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [m, ...prev]));
+    setReplyTo(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setMessages((prev) =>
+      prev.some((x) => x.id === m.id) ? prev : [attachReply(m), ...prev],
+    );
   };
 
   const onAttach = async () => {
@@ -191,9 +246,12 @@ export default function ChatScreen() {
         me.id,
         isVideo ? 'video' : 'image',
         path,
+        replyTo?.id ?? null,
       );
-      if (m) setMessages((prev) => [m, ...prev]);
-      else failSend();
+      if (m) {
+        setMessages((prev) => [attachReply(m), ...prev]);
+        setReplyTo(null);
+      } else failSend();
     }
     setSending(false);
   };
@@ -201,7 +259,7 @@ export default function ChatScreen() {
   const startRecording = async () => {
     const status = await AudioModule.requestRecordingPermissionsAsync();
     if (!status.granted) {
-      Alert.alert(t('common.error'), t('chat.micDenied'));
+      appAlert(t('common.error'), t('chat.micDenied'));
       return;
     }
     await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
@@ -234,9 +292,17 @@ export default function ChatScreen() {
       'audio/mp4',
     );
     if (path) {
-      const m = await sendVoiceMessage(conversationId, me.id, path, previewDur);
-      if (m) setMessages((prev) => [m, ...prev]);
-      else failSend();
+      const m = await sendVoiceMessage(
+        conversationId,
+        me.id,
+        path,
+        previewDur,
+        replyTo?.id ?? null,
+      );
+      if (m) {
+        setMessages((prev) => [attachReply(m), ...prev]);
+        setReplyTo(null);
+      } else failSend();
     }
     setSending(false);
     setPreviewUri(null);
@@ -245,9 +311,19 @@ export default function ChatScreen() {
 
   const onLongPress = (m: Message) => {
     const mine = m.sender_id === me.id;
-    const options: { text: string; style?: 'destructive'; onPress?: () => void }[] = [
-      { text: t('common.cancel') },
+    const options: {
+      text: string;
+      style?: 'destructive' | 'cancel';
+      onPress?: () => void;
+    }[] = [
+      { text: t('common.cancel'), style: 'cancel' },
     ];
+    if (!m.is_deleted) {
+      options.unshift({
+        text: `↩ ${t('chat.reply')}`,
+        onPress: () => startReply(m),
+      });
+    }
     if (mine && !m.is_deleted) {
       options.unshift({
         text: t('chat.deleteMessage'),
@@ -267,16 +343,16 @@ export default function ChatScreen() {
       options.unshift({
         text: t('chat.reportMessage'),
         onPress: () => {
-          Alert.prompt(t('userProfile.report'), t('userProfile.reportReason'), async (reason) => {
+          appPrompt(t('userProfile.report'), t('userProfile.reportReason'), t('common.send'), async (reason) => {
             if (!reason?.trim()) return;
             if (await reportUser(me.id, m.sender_id, reason.trim(), m.id)) {
-              Alert.alert('✓', t('userProfile.reportSent'));
+              appAlert('✓', t('userProfile.reportSent'));
             }
           });
         },
       });
     }
-    Alert.alert('', '', options);
+    appAlert('', '', options);
   };
 
   return (
@@ -312,6 +388,7 @@ export default function ChatScreen() {
         </TouchableOpacity>
       </View>
 
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       {/* الرسائل */}
       <FlatList
         ref={listRef}
@@ -319,15 +396,80 @@ export default function ChatScreen() {
         inverted
         keyExtractor={(m) => m.id}
         contentContainerStyle={{ padding: spacing.md, gap: spacing.sm }}
-        renderItem={({ item }) => (
-          <MessageBubble
-            m={item}
-            mine={item.sender_id === me.id}
-            gift={item.gift_send_id ? giftMap[item.gift_send_id] : undefined}
-            onLongPress={() => onLongPress(item)}
-          />
-        )}
+        renderItem={({ item }) => {
+          const mine = item.sender_id === me.id;
+          const bubble = (
+            <MessageBubble
+              m={item}
+              mine={mine}
+              gift={item.gift_send_id ? giftMap[item.gift_send_id] : undefined}
+              replyName={item.reply_preview ? nameFor(item.reply_preview.sender_id) : undefined}
+              replySnippet={item.reply_preview ? snippetFor(item.reply_preview) : undefined}
+              onLongPress={() => onLongPress(item)}
+            />
+          );
+          if (item.is_deleted) {
+            return (
+              <View
+                style={{
+                  alignSelf: mine ? 'flex-end' : 'flex-start',
+                  maxWidth: '82%',
+                }}>
+                {bubble}
+              </View>
+            );
+          }
+          return (
+            <Swipeable
+              ref={(r) => {
+                if (r) swipeRefs.current.set(item.id, r);
+                else swipeRefs.current.delete(item.id);
+              }}
+              friction={2}
+              leftThreshold={36}
+              rightThreshold={36}
+              overshootLeft={false}
+              overshootRight={false}
+              containerStyle={{
+                alignSelf: mine ? 'flex-end' : 'flex-start',
+                maxWidth: '82%',
+              }}
+              renderLeftActions={() => (
+                <View style={styles.replyAction}>
+                  <Text style={{ fontSize: 19 }}>↩</Text>
+                </View>
+              )}
+              renderRightActions={() => (
+                <View style={styles.replyAction}>
+                  <Text style={{ fontSize: 19 }}>↪</Text>
+                </View>
+              )}
+              onSwipeableOpen={() => {
+                startReply(item);
+                swipeRefs.current.get(item.id)?.close();
+              }}>
+              {bubble}
+            </Swipeable>
+          );
+        }}
       />
+
+      {/* شريط الرد (اقتباس) */}
+      {replyTo && phase === 'idle' && !blockedByMe ? (
+        <View style={styles.replyBar}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.replyBarName}>
+              {t('chat.replyingTo')} {nameFor(replyTo.sender_id)}
+            </Text>
+            <Text style={styles.replyBarText} numberOfLines={1}>
+              {snippetFor(replyTo)}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => setReplyTo(null)} hitSlop={8}>
+            <Text style={{ color: colors.muted, fontSize: 17 }}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       {/* منطقة الإدخال */}
       {blockedByMe ? (
@@ -364,6 +506,7 @@ export default function ChatScreen() {
             <Text style={{ fontSize: 24 }}>📎</Text>
           </TouchableOpacity>
           <TextInput
+            ref={inputRef}
             value={text}
             onChangeText={setText}
             placeholder={t('chat.typeMessage')}
@@ -384,6 +527,7 @@ export default function ChatScreen() {
           )}
         </View>
       )}
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -392,11 +536,15 @@ function MessageBubble({
   m,
   mine,
   gift,
+  replyName,
+  replySnippet,
   onLongPress,
 }: {
   m: Message;
   mine: boolean;
   gift?: GiftInfo;
+  replyName?: string;
+  replySnippet?: string;
   onLongPress: () => void;
 }) {
   const { t } = useTranslation();
@@ -420,11 +568,18 @@ function MessageBubble({
   });
 
   return (
-    <TouchableOpacity
-      onLongPress={onLongPress}
-      activeOpacity={0.85}
-      style={[styles.bubbleRow, mine ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' }]}>
+    <TouchableOpacity onLongPress={onLongPress} activeOpacity={0.85}>
       <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
+        {!m.is_deleted && m.reply_to_id ? (
+          <View style={styles.quote}>
+            <Text style={styles.quoteName} numberOfLines={1}>
+              {replyName ?? ''}
+            </Text>
+            <Text style={styles.quoteText} numberOfLines={1}>
+              {replySnippet ?? ''}
+            </Text>
+          </View>
+        ) : null}
         {m.is_deleted ? (
           <Text style={styles.deleted}>🚫 {t('chats.deleted')}</Text>
         ) : m.type === 'text' ? (
@@ -487,7 +642,44 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerName: { color: colors.text, fontSize: fonts.sizes.md, fontWeight: fonts.weights.bold },
-  bubbleRow: { maxWidth: '82%' },
+  replyAction: {
+    width: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  replyBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.stroke,
+    borderStartWidth: 3,
+    borderStartColor: colors.accent,
+  },
+  replyBarName: {
+    color: colors.accent,
+    fontSize: fonts.sizes.xs,
+    fontWeight: fonts.weights.bold,
+  },
+  replyBarText: { color: colors.muted, fontSize: fonts.sizes.sm, marginTop: 1 },
+  quote: {
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    borderStartWidth: 3,
+    borderStartColor: colors.accent,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+    marginBottom: 5,
+  },
+  quoteName: {
+    color: colors.accent,
+    fontSize: fonts.sizes.xs,
+    fontWeight: fonts.weights.bold,
+  },
+  quoteText: { color: colors.muted, fontSize: fonts.sizes.xs, marginTop: 1 },
   bubble: {
     borderRadius: radius.lg,
     paddingHorizontal: spacing.md,

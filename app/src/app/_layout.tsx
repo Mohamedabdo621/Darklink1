@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
+import AppDialog from '../components/AppDialog';
 import { initI18n } from '../i18n';
 import { AuthProvider } from '../contexts/AuthContext';
 import { colors } from '../theme';
@@ -28,15 +31,21 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider>
-      <StatusBar style="light" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: colors.bg },
-          animation: 'fade_from_bottom',
-        }}
-      />
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <KeyboardProvider>
+        <AuthProvider>
+          <StatusBar style="light" />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: colors.bg },
+              animation: 'slide_from_right',
+              gestureEnabled: true,
+            }}
+          />
+          <AppDialog />
+        </AuthProvider>
+      </KeyboardProvider>
+    </GestureHandlerRootView>
   );
 }

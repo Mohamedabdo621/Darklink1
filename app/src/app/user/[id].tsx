@@ -1,13 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  Alert,
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { appAlert, appPrompt } from '../../lib/dialog';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Chip, GlowCard, NeonButton, Screen } from '../../components/ui';
@@ -70,7 +63,7 @@ export default function UserProfile() {
   const startChat = async () => {
     const cid = await getOrCreateConversation(user.id);
     if (!cid) {
-      Alert.alert(t('common.error'), t('chat.blockedNotice'));
+      appAlert(t('common.error'), t('chat.blockedNotice'));
       return;
     }
     router.push({ pathname: '/chat/[id]', params: { id: cid } });
@@ -81,19 +74,20 @@ export default function UserProfile() {
       ? await unblockUser(me.id, user.id)
       : await blockUser(me.id, user.id);
     if (ok) {
-      if (!blocked) Alert.alert('🚫', t('userProfile.blocked'));
+      if (!blocked) appAlert('🚫', t('userProfile.blocked'));
       setBlocked(!blocked);
     }
   };
 
   const report = () => {
-    Alert.prompt(
+    appPrompt(
       t('userProfile.report'),
       t('userProfile.reportReason'),
+      t('common.send'),
       async (reason) => {
         if (!reason?.trim()) return;
         const ok = await reportUser(me.id, user.id, reason.trim());
-        if (ok) Alert.alert('✓', t('userProfile.reportSent'));
+        if (ok) appAlert('✓', t('userProfile.reportSent'));
       },
     );
   };

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { appAlert } from '../../lib/dialog';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Logo, NeonButton, NeonInput, Screen } from '../../components/ui';
@@ -24,7 +26,7 @@ export default function SetPassword() {
     const res = await setNewPassword(password);
     setBusy(false);
     if (!res.ok) {
-      Alert.alert(t('common.error'), res.raw ? `${t(res.errorKey)}
+      appAlert(t('common.error'), res.raw ? `${t(res.errorKey)}
 
 ${res.raw}` : t(res.errorKey));
       return;
@@ -34,7 +36,7 @@ ${res.raw}` : t(res.errorKey));
 
   return (
     <Screen>
-      <View style={{ flex: 1, justifyContent: 'center' }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1, justifyContent: 'center' }}>
         <View style={{ alignItems: 'center', marginBottom: spacing.xl }}>
           <Logo size={30} />
           <Text style={styles.title}>{t('auth.newPassword')}</Text>
@@ -56,7 +58,7 @@ ${res.raw}` : t(res.errorKey));
           placeholder="••••••••"
         />
         <NeonButton title={t('auth.setNewPassword')} onPress={submit} loading={busy} />
-      </View>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }

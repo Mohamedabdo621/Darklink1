@@ -1,12 +1,6 @@
 import React, { useCallback, useState } from 'react';
-import {
-  Alert,
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { appAlert } from '../lib/dialog';
 import { useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { GlowCard, NeonButton, Screen } from '../components/ui';
@@ -53,7 +47,7 @@ export default function Store() {
   if (!me) return <Screen>{null}</Screen>;
 
   const buy = (pkg: GemPackage) => {
-    Alert.alert(
+    appAlert(
       t('store.title'),
       t('store.confirmBuy', { gems: pkg.gems, price: pkg.price_egp }),
       [
@@ -66,9 +60,9 @@ export default function Store() {
             setBusyId(null);
             if (res.ok) {
               if (res.balance !== undefined) setBalance(res.balance);
-              Alert.alert('✓', t('store.buySuccess'));
+              appAlert('✓', t('store.buySuccess'));
             } else {
-              Alert.alert(t('common.error'), t('store.buyFailed'));
+              appAlert(t('common.error'), t('store.buyFailed'));
             }
           },
         },
@@ -77,7 +71,7 @@ export default function Store() {
   };
 
   const buyVip = () => {
-    Alert.alert(
+    appAlert(
       t('store.vipTitle'),
       t('store.vipPrice', { gems: VIP_PRICE }),
       [
@@ -91,11 +85,11 @@ export default function Store() {
             if (res.ok) {
               if (res.balance !== undefined) setBalance(res.balance);
               await refreshProfile();
-              Alert.alert('👑', t('store.vipSuccess'));
+              appAlert('👑', t('store.vipSuccess'));
             } else if (res.error === 'insufficient') {
-              Alert.alert(t('common.error'), t('store.insufficient'));
+              appAlert(t('common.error'), t('store.insufficient'));
             } else {
-              Alert.alert(t('common.error'), t('common.error'));
+              appAlert(t('common.error'), t('common.error'));
             }
           },
         },

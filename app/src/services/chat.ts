@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { Conversation, Message } from '../lib/types';
+import type { Conversation, Message, ReplyPreview } from '../lib/types';
 
 export async function getOrCreateConversation(otherId: string): Promise<string | null> {
   const { data, error } = await supabase.rpc('get_or_create_conversation', {
@@ -9,13 +9,23 @@ export async function getOrCreateConversation(otherId: string): Promise<string |
   return data as string;
 }
 
-export async function fetchConversations(): Promise<Conversation[]> {
+export async function fetchConversations(myId: string): Promise<Conversation[]> {
   const { data, error } = await supabase
     .from('conversations')
     .select('*')
     .order('last_message_at', { ascending: false });
   if (error) return [];
-  return (data ?? []) as Conversation[];
+  const all = (data ?? []) as Conversation[];
+  // المحادثات المخفية عني لا تظهر في القائمة (تعود مع أي رسالة جديدة)
+  return all.filter((c) => !(c.hidden_for ?? []).includes(myId));
+}
+
+/** إخفاء المحادثة من قائمتي فقط (حذف من القائمة — ليست حذفًا فعليًا) */
+export async function hideConversation(conversationId: string): Promise<boolean> {
+  const { error } = await supabase.rpc('hide_conversation', {
+    p_conversation: conversationId,
+  });
+  return !error;
 }
 
 export async function fetchLastMessage(conversationId: string): Promise<Message | null> {
@@ -42,6 +52,24 @@ export async function fetchUnreadCount(
   return count ?? 0;
 }
 
+/** جلب معاينات الرسائل الأصلية لرسائل الرد (اقتباس) دفعة واحدة */
+export async function fetchReplyPreviews(ids: string[]): Promise<Map<string, ReplyPreview>> {
+  const map = new Map<string, ReplyPreview>();
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (!unique.length) return map;
+  const { data } = await supabase
+    .from('messages')
+    .select('id, sender_id, type, body, is_deleted')
+    .in('id', unique);
+  for (const row of (data ?? []) as ReplyPreview[]) map.set(row.id, row);
+  return map;
+}
+
+export async function fetchReplyPreview(id: string): Promise<ReplyPreview | null> {
+  const map = await fetchReplyPreviews([id]);
+  return map.get(id) ?? null;
+}
+
 export async function fetchMessages(conversationId: string): Promise<Message[]> {
   const { data, error } = await supabase
     .from('messages')
@@ -50,7 +78,14 @@ export async function fetchMessages(conversationId: string): Promise<Message[]> 
     .order('created_at', { ascending: false })
     .limit(100);
   if (error) return [];
-  return (data ?? []) as Message[];
+  const msgs = (data ?? []) as Message[];
+  const previews = await fetchReplyPreviews(
+    msgs.map((m) => m.reply_to_id).filter(Boolean) as string[],
+  );
+  for (const m of msgs) {
+    if (m.reply_to_id) m.reply_preview = previews.get(m.reply_to_id) ?? null;
+  }
+  return msgs;
 }
 
 export async function markConversationRead(conversationId: string): Promise<void> {
@@ -71,8 +106,17 @@ async function insertMessage(
   return data as Message;
 }
 
-export function sendTextMessage(conversationId: string, senderId: string, body: string) {
-  return insertMessage(conversationId, senderId, { type: 'text', body: body.trim() });
+export function sendTextMessage(
+  conversationId: string,
+  senderId: string,
+  body: string,
+  replyToId?: string | null,
+) {
+  return insertMessage(conversationId, senderId, {
+    type: 'text',
+    body: body.trim(),
+    reply_to_id: replyToId ?? null,
+  });
 }
 
 /** رفع ملف وسائط/صوت إلى bucket خاص بمسار {conversation}/{sender}/... */
@@ -99,8 +143,13 @@ export function sendMediaMessage(
   senderId: string,
   type: 'image' | 'video',
   mediaPath: string,
+  replyToId?: string | null,
 ) {
-  return insertMessage(conversationId, senderId, { type, media_path: mediaPath });
+  return insertMessage(conversationId, senderId, {
+    type,
+    media_path: mediaPath,
+    reply_to_id: replyToId ?? null,
+  });
 }
 
 export function sendVoiceMessage(
@@ -108,11 +157,13 @@ export function sendVoiceMessage(
   senderId: string,
   mediaPath: string,
   durationSec: number,
+  replyToId?: string | null,
 ) {
   return insertMessage(conversationId, senderId, {
     type: 'voice',
     media_path: mediaPath,
     voice_duration: durationSec,
+    reply_to_id: replyToId ?? null,
   });
 }
 

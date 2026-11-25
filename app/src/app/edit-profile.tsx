@@ -1,13 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Alert,
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { appAlert } from '../lib/dialog';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -67,7 +61,7 @@ function EditProfileForm({ profile }: { profile: Profile }) {
       setAvatar(res.assets[0].uri);
       await refreshProfile();
     } else {
-      Alert.alert(t('common.error'), t('common.error'));
+      appAlert(t('common.error'), t('common.error'));
     }
   };
 
@@ -87,11 +81,11 @@ function EditProfileForm({ profile }: { profile: Profile }) {
     setBusy(false);
     if (!res.ok) {
       if (res.taken) setUsernameErr(t('editProfile.usernameTaken'));
-      else Alert.alert(t('common.error'), t('common.error'));
+      else appAlert(t('common.error'), t('common.error'));
       return;
     }
     await refreshProfile();
-    Alert.alert(t('common.success'), t('editProfile.saved'));
+    appAlert(t('common.success'), t('editProfile.saved'));
     router.back();
   };
 
@@ -101,12 +95,12 @@ function EditProfileForm({ profile }: { profile: Profile }) {
   ) => {
     const ok = await updatePrivacySetting(profile.id, field, value);
     if (ok) await refreshProfile();
-    else Alert.alert(t('common.error'), t('common.error'));
+    else appAlert(t('common.error'), t('common.error'));
   };
 
   return (
     <Screen>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScrollView bottomOffset={24} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>{t('editProfile.title')}</Text>
 
         <View style={{ alignItems: 'center', marginBottom: spacing.lg }}>
@@ -197,7 +191,7 @@ function EditProfileForm({ profile }: { profile: Profile }) {
           />
         </GlowCard>
         <View style={{ height: spacing.xxl }} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </Screen>
   );
 }

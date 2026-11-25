@@ -9,17 +9,20 @@ import {
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { Screen } from '../../components/ui';
 import { useAuth } from '../../contexts/AuthContext';
+import { appAlert } from '../../lib/dialog';
 import { supabase } from '../../lib/supabase';
 import type { PublicProfile } from '../../lib/types';
 import {
   fetchConversations,
   fetchLastMessage,
   fetchUnreadCount,
+  hideConversation,
 } from '../../services/chat';
 import { avatarSignedUrl } from '../../services/profile';
-import { fetchPublicProfile } from '../../services/social';
+import { blockUser, fetchPublicProfile } from '../../services/social';
 import { colors, fonts, radius, spacing } from '../../theme';
 
 interface ChatRow {
@@ -60,7 +63,7 @@ export default function Chats() {
 
   const load = useCallback(async () => {
     if (!me) return;
-    const convs = await fetchConversations();
+    const convs = await fetchConversations(me.id);
     const built: ChatRow[] = [];
     for (const c of convs) {
       const otherId = c.user_a === me.id ? c.user_b : c.user_a;
@@ -114,6 +117,59 @@ export default function Chats() {
     setRefreshing(false);
   };
 
+  const removeRow = (conversationId: string) =>
+    setRows((prev) => prev.filter((r) => r.conversationId !== conversationId));
+
+  const onHide = (item: ChatRow) => {
+    appAlert(t('chats.hide'), t('chats.hideConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('common.delete'),
+        style: 'destructive',
+        onPress: async () => {
+          if (await hideConversation(item.conversationId)) {
+            removeRow(item.conversationId);
+          }
+        },
+      },
+    ]);
+  };
+
+  const onBlock = (item: ChatRow) => {
+    if (!me || !item.other) return;
+    appAlert(t('userProfile.block'), item.other.shown_name, [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('userProfile.block'),
+        style: 'destructive',
+        onPress: async () => {
+          if (await blockUser(me.id, item.other!.id)) {
+            await hideConversation(item.conversationId);
+            removeRow(item.conversationId);
+            appAlert('🚫', t('chats.blockedUser'));
+          }
+        },
+      },
+    ]);
+  };
+
+  const renderActions = (item: ChatRow) => (
+    <View style={styles.actions}>
+      <TouchableOpacity
+        style={[styles.actionBtn, { backgroundColor: colors.danger }]}
+        onPress={() => onHide(item)}>
+        <Text style={styles.actionIcon}>🗑</Text>
+        <Text style={styles.actionLabel}>{t('chats.hide')}</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.actionBtn, { backgroundColor: colors.surfaceLight }]}
+        onPress={() => onBlock(item)}>
+        <Text style={styles.actionIcon}>🚫</Text>
+        <Text style={styles.actionLabel}>{t('userProfile.block')}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <Screen>
       <Text style={styles.title}>{t('chats.title')}</Text>
@@ -124,6 +180,14 @@ export default function Chats() {
         onRefresh={onRefresh}
         ListEmptyComponent={<Text style={styles.empty}>{t('chats.empty')}</Text>}
         renderItem={({ item }) => (
+          <Swipeable
+            friction={2}
+            leftThreshold={40}
+            rightThreshold={40}
+            overshootLeft={false}
+            overshootRight={false}
+            renderLeftActions={() => renderActions(item)}
+            renderRightActions={() => renderActions(item)}>
           <TouchableOpacity
             style={styles.row}
             onPress={() =>
@@ -155,6 +219,7 @@ export default function Chats() {
               ) : null}
             </View>
           </TouchableOpacity>
+          </Swipeable>
         )}
       />
     </Screen>
@@ -182,6 +247,22 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.stroke,
+    backgroundColor: colors.bg,
+  },
+  actions: { flexDirection: 'row' },
+  actionBtn: {
+    width: 76,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    paddingVertical: spacing.sm,
+  },
+  actionIcon: { fontSize: 19 },
+  actionLabel: {
+    color: colors.white,
+    fontSize: fonts.sizes.xs,
+    fontWeight: fonts.weights.bold,
+    textAlign: 'center',
   },
   avatar: { width: 52, height: 52, borderRadius: 26 },
   avatarFallback: {

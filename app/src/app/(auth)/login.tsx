@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { appAlert } from '../../lib/dialog';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Logo, NeonButton, NeonInput, Screen } from '../../components/ui';
@@ -16,7 +18,7 @@ export default function Login() {
 
   const submit = async () => {
     if (!isSupabaseConfigured) {
-      Alert.alert('DARKLINK', 'Supabase is not configured yet (stage: backend deploy).');
+      appAlert('DARKLINK', 'Supabase is not configured yet (stage: backend deploy).');
       return;
     }
     if (!isValidEmail(email)) {
@@ -32,7 +34,7 @@ export default function Login() {
         router.push({ pathname: '/(auth)/check-email', params: { email, mode: 'signup' } });
         return;
       }
-      Alert.alert(t('common.error'), res.raw ? `${t(res.errorKey)}
+      appAlert(t('common.error'), res.raw ? `${t(res.errorKey)}
 
 ${res.raw}` : t(res.errorKey));
       return;
@@ -42,7 +44,7 @@ ${res.raw}` : t(res.errorKey));
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
+      <KeyboardAwareScrollView bottomOffset={24} contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
         <View style={{ alignItems: 'center', marginBottom: spacing.xxl }}>
           <Logo size={36} />
           <Text style={styles.subtitle}>{t('auth.login')}</Text>
@@ -83,7 +85,7 @@ ${res.raw}` : t(res.errorKey));
             </Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </Screen>
   );
 }

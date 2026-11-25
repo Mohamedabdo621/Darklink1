@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { appAlert } from '../../lib/dialog';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Logo, NeonButton, NeonInput, Screen } from '../../components/ui';
@@ -24,18 +26,18 @@ export default function Register() {
     setErrors(e);
     if (Object.keys(e).length) return;
     if (!agree) {
-      Alert.alert(t('common.error'), t('auth.termsRequired'));
+      appAlert(t('common.error'), t('auth.termsRequired'));
       return;
     }
     if (!isSupabaseConfigured) {
-      Alert.alert('DARKLINK', 'Supabase is not configured yet (stage: backend deploy).');
+      appAlert('DARKLINK', 'Supabase is not configured yet (stage: backend deploy).');
       return;
     }
     setBusy(true);
     const res = await signUp(email, password);
     setBusy(false);
     if (!res.ok) {
-      Alert.alert(t('common.error'), res.raw ? `${t(res.errorKey)}
+      appAlert(t('common.error'), res.raw ? `${t(res.errorKey)}
 
 ${res.raw}` : t(res.errorKey));
       return;
@@ -49,7 +51,7 @@ ${res.raw}` : t(res.errorKey));
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
+      <KeyboardAwareScrollView bottomOffset={24} contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
         <View style={{ alignItems: 'center', marginBottom: spacing.xl }}>
           <Logo size={32} />
           <Text style={styles.subtitle}>{t('auth.createAccount')}</Text>
@@ -104,7 +106,7 @@ ${res.raw}` : t(res.errorKey));
             <Text style={{ color: colors.accent, fontWeight: '700' }}>{t('auth.login')}</Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </Screen>
   );
 }

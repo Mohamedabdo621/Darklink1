@@ -87,9 +87,19 @@ export interface Conversation {
   user_b: string;
   last_message_at: string;
   created_at: string;
+  hidden_for: string[];
 }
 
 export type MessageType = 'text' | 'image' | 'video' | 'file' | 'voice' | 'gift';
+
+/** معاينة مختصرة للرسالة الأصلية عند الرد عليها (اقتباس) */
+export interface ReplyPreview {
+  id: string;
+  sender_id: string;
+  type: MessageType;
+  body: string | null;
+  is_deleted: boolean;
+}
 
 export interface Message {
   id: string;
@@ -102,7 +112,10 @@ export interface Message {
   gift_send_id: string | null;
   is_deleted: boolean;
   read_at: string | null;
+  reply_to_id: string | null;
   created_at: string;
+  /** تُملأ من العميل بعد الجلب — ليست عمودًا في القاعدة */
+  reply_preview?: ReplyPreview | null;
 }
 
 export type NotificationType =

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { appAlert } from '../lib/dialog';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { GlowCard, Screen } from '../components/ui';
@@ -45,7 +46,7 @@ export default function Settings() {
     if (!profile) return;
     await setLanguage(lang);
     await supabase.from('profiles').update({ language: lang }).eq('id', profile.id);
-    Alert.alert(t('settings.language'), t('settings.restartNeeded'));
+    appAlert(t('settings.language'), t('settings.restartNeeded'));
   };
 
   const doLogout = async () => {
@@ -54,13 +55,13 @@ export default function Settings() {
   };
 
   const deleteAccount = () => {
-    Alert.alert(t('settings.deleteAccount'), t('settings.deleteConfirm'), [
+    appAlert(t('settings.deleteAccount'), t('settings.deleteConfirm'), [
       { text: t('common.cancel'), style: 'cancel' },
       {
         text: t('common.delete'),
         style: 'destructive',
         onPress: () => {
-          Alert.alert(t('settings.deleteAccount'), t('settings.deleteConfirm2'), [
+          appAlert(t('settings.deleteAccount'), t('settings.deleteConfirm2'), [
             { text: t('common.cancel'), style: 'cancel' },
             {
               text: t('common.delete'),
@@ -68,7 +69,7 @@ export default function Settings() {
               onPress: async () => {
                 const { error } = await supabase.functions.invoke('delete-account');
                 if (error) {
-                  Alert.alert(t('common.error'), t('common.error'));
+                  appAlert(t('common.error'), t('common.error'));
                   return;
                 }
                 await signOut();

@@ -1,14 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  Alert,
-  Animated,
-  FlatList,
-  Image,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { Animated, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { appAlert } from '../lib/dialog';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Screen } from '../components/ui';
@@ -52,7 +44,7 @@ export default function GiftPicker() {
   if (!me || !userId) return <Screen>{null}</Screen>;
 
   const pick = (gift: Gift) => {
-    Alert.alert(
+    appAlert(
       t('giftPicker.title'),
       t('giftPicker.confirmSend', {
         gift: t(`gifts.${gift.name_key}`),
@@ -70,14 +62,14 @@ export default function GiftPicker() {
               if (res.balance !== undefined) setBalance(res.balance);
               setSentGift(gift);
             } else if (res.error === 'insufficient') {
-              Alert.alert(t('common.error'), t('giftPicker.insufficient'), [
+              appAlert(t('common.error'), t('giftPicker.insufficient'), [
                 { text: t('common.cancel'), style: 'cancel' },
                 { text: t('wallet.buyGems'), onPress: () => router.push('/store') },
               ]);
             } else if (res.error === 'blocked') {
-              Alert.alert(t('common.error'), t('giftPicker.blocked'));
+              appAlert(t('common.error'), t('giftPicker.blocked'));
             } else {
-              Alert.alert(t('common.error'), t('common.error'));
+              appAlert(t('common.error'), t('common.error'));
             }
           },
         },
