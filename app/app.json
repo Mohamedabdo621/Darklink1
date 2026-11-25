@@ -14,7 +14,8 @@
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.POST_NOTIFICATIONS"
       ],
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "googleServicesFile": "./google-services.json"
     },
     "experiments": {
       "typedRoutes": true

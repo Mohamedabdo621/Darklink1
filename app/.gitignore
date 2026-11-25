@@ -40,3 +40,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Firebase config (local only — EAS uploads from this dir)
+google-services.json
