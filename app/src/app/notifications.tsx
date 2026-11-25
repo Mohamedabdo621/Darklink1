@@ -80,6 +80,17 @@ export default function Notifications() {
           amount: Number(n.payload.amount ?? 0),
         });
       }
+      if (kind === 'referral_welcome') {
+        return t('notifications.referralWelcome', {
+          amount: Number(n.payload.amount ?? 0),
+        });
+      }
+      if (kind === 'post_like') {
+        return t('notifications.postLike');
+      }
+      if (kind === 'post_comment') {
+        return t('notifications.postComment');
+      }
       if (kind === 'contest_win') {
         return t('notifications.contestWin', {
           amount: Number(n.payload.amount ?? 0),
@@ -117,6 +128,15 @@ export default function Notifications() {
     const cid = n.payload.conversation_id;
     if ((n.type === 'new_message' || n.type === 'voice_note') && typeof cid === 'string') {
       router.push({ pathname: '/chat/[id]', params: { id: cid } });
+    }
+    const pid = n.payload.post_id;
+    if (
+      n.type === 'account' &&
+      typeof n.payload.kind === 'string' &&
+      (n.payload.kind === 'post_like' || n.payload.kind === 'post_comment') &&
+      typeof pid === 'string'
+    ) {
+      router.push({ pathname: '/post/[id]', params: { id: pid } });
     }
   };
 

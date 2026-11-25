@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import type { PostReportRow, ReferralRow } from '../lib/types';
 
 // ---------------- لوحة الإدارة (كل الدوال محمية خادميًا بـ is_admin) --------
 
@@ -193,4 +194,22 @@ export async function proofSignedUrl(path: string | null): Promise<string | null
     .from('payment-proofs')
     .createSignedUrl(path, 3600);
   return data?.signedUrl ?? null;
+}
+
+/** مين دعا مين (للأدمن) */
+export async function fetchAdminReferrals(): Promise<ReferralRow[]> {
+  const { data, error } = await supabase.rpc('admin_list_referrals', {
+    p_limit: 50,
+  });
+  if (error || !data) return [];
+  return data as ReferralRow[];
+}
+
+/** بلاغات البوستات (للأدمن) */
+export async function fetchAdminPostReports(): Promise<PostReportRow[]> {
+  const { data, error } = await supabase.rpc('admin_list_post_reports', {
+    p_limit: 50,
+  });
+  if (error || !data) return [];
+  return data as PostReportRow[];
 }

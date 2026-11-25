@@ -167,3 +167,56 @@ export function shownNameOf(p: Pick<Profile, 'identity_mode' | 'share_info' | 'd
     ? p.display_name
     : p.anonymous_alias;
 }
+
+export interface Post {
+  id: string;
+  author_id: string;
+  body: string;
+  media_path: string | null;
+  created_at: string;
+  shown_name: string;
+  username: string | null;
+  avatar_url: string | null;
+  is_vip: boolean;
+  likes_count: number;
+  comments_count: number;
+  liked_by_me: boolean;
+}
+
+export interface PostComment {
+  id: string;
+  post_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
+  shown_name: string;
+  avatar_url: string | null;
+  is_vip: boolean;
+}
+
+export interface ReferralStats {
+  code: string;
+  invited: number;
+  gems_earned: number;
+  rewards_today: number;
+}
+
+export interface ReferralRow {
+  referrer_id: string;
+  referred_id: string;
+  rewarded: boolean;
+  created_at: string;
+  referrer_name: string;
+  referred_name: string;
+}
+
+export interface PostReportRow {
+  post_id: string;
+  reporter_id: string;
+  reason: string;
+  created_at: string;
+  reports_count: number;
+  post_body: string | null;
+  post_hidden: boolean | null;
+  reporter_name: string;
+}

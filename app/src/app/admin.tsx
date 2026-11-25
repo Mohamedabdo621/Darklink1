@@ -18,7 +18,9 @@ import {
   createPromo,
   fetchAdminConfig,
   fetchAdminOrders,
+  fetchAdminPostReports,
   fetchAdminPromos,
+  fetchAdminReferrals,
   fetchAdminReports,
   fetchAdminStats,
   grantGems,
@@ -35,16 +37,20 @@ import {
   type PaymentOrder,
   type PromoCode,
 } from '../services/admin';
+import { deletePost } from '../services/timeline';
+import type { PostReportRow, ReferralRow } from '../lib/types';
 import { colors, fonts, radius, spacing } from '../theme';
 
-type Section = 'overview' | 'orders' | 'users' | 'reports' | 'promos' | 'settings';
+type Section = 'overview' | 'orders' | 'users' | 'reports' | 'referrals' | 'postReports' | 'promos' | 'settings';
 
 const CONFIG_FIELDS: { key: string; labelKey: string; numeric?: boolean }[] = [
   { key: 'vodafone_cash_number', labelKey: 'admin.cfgVodafone' },
   { key: 'etisalat_cash_number', labelKey: 'admin.cfgEtisalat' },
   { key: 'manual_bonus_pct', labelKey: 'admin.cfgBonusPct', numeric: true },
   { key: 'transfer_daily_cap', labelKey: 'admin.cfgTransferCap', numeric: true },
-  { key: 'referral_reward', labelKey: 'admin.cfgReferralReward', numeric: true },
+  { key: 'referral_inviter_reward', labelKey: 'admin.cfgReferralInviter', numeric: true },
+  { key: 'referral_welcome_reward', labelKey: 'admin.cfgReferralWelcome', numeric: true },
+  { key: 'referral_daily_cap', labelKey: 'admin.cfgReferralCap', numeric: true },
   { key: 'contest_prize_gems', labelKey: 'admin.cfgContestPrize', numeric: true },
   { key: 'vip_silver_price', labelKey: 'admin.cfgVipSilver', numeric: true },
   { key: 'vip_price_gems', labelKey: 'admin.cfgVipGold', numeric: true },
@@ -67,6 +73,10 @@ export default function Admin() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   // reports
   const [reports, setReports] = useState<AdminReport[]>([]);
+  // referrals
+  const [referrals, setReferrals] = useState<ReferralRow[]>([]);
+  // post reports
+  const [postReports, setPostReports] = useState<PostReportRow[]>([]);
   // promos
   const [promos, setPromos] = useState<PromoCode[]>([]);
   const [pCode, setPCode] = useState('');
@@ -93,6 +103,8 @@ export default function Admin() {
       }
       if (s === 'users') setUsers(await searchAdminUsers(query));
       if (s === 'reports') setReports(await fetchAdminReports());
+      if (s === 'referrals') setReferrals(await fetchAdminReferrals());
+      if (s === 'postReports') setPostReports(await fetchAdminPostReports());
       if (s === 'promos') setPromos(await fetchAdminPromos());
       if (s === 'settings') setConfig(await fetchAdminConfig());
     },
@@ -119,6 +131,8 @@ export default function Admin() {
     { key: 'orders', label: `💳 ${t('admin.orders')}` },
     { key: 'users', label: `👥 ${t('admin.users')}` },
     { key: 'reports', label: `🚨 ${t('admin.reports')}` },
+    { key: 'referrals', label: `🎁 ${t('admin.referrals')}` },
+    { key: 'postReports', label: `📝 ${t('admin.postReports')}` },
     { key: 'promos', label: `🎟 ${t('admin.promos')}` },
     { key: 'settings', label: `⚙️ ${t('admin.settings')}` },
   ];
@@ -352,6 +366,61 @@ export default function Admin() {
                       loadSection('reports');
                     }}>
                     <Text style={styles.smallBtnText}>{t('admin.markActioned')}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {section === 'referrals' ? (
+          <View>
+            {referrals.length === 0 ? (
+              <Text style={styles.empty}>{t('admin.noReferrals')}</Text>
+            ) : null}
+            {referrals.map((r) => (
+              <View key={`${r.referrer_id}-${r.referred_id}`} style={styles.card}>
+                <Text style={{ color: colors.text, fontWeight: '700' }}>
+                  {t('admin.referrer')}: {r.referrer_name}
+                </Text>
+                <Text style={{ color: colors.text }}>
+                  {t('admin.referred')}: {r.referred_name}
+                </Text>
+                <Text style={styles.meta}>
+                  {new Date(r.created_at).toLocaleString()} •{' '}
+                  {r.rewarded ? t('admin.rewarded') : t('admin.notRewarded')}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {section === 'postReports' ? (
+          <View>
+            {postReports.length === 0 ? (
+              <Text style={styles.empty}>{t('admin.noPostReports')}</Text>
+            ) : null}
+            {postReports.map((r) => (
+              <View key={`${r.post_id}-${r.reporter_id}`} style={styles.card}>
+                <Text style={{ color: colors.text }}>{r.post_body ?? '—'}</Text>
+                <Text style={styles.meta}>
+                  {t('admin.reportsCount', { count: r.reports_count })}
+                  {r.post_hidden ? ` • ${t('admin.postHidden')}` : ''} •{' '}
+                  {r.reporter_name} • {new Date(r.created_at).toLocaleString()}
+                </Text>
+                {r.reason ? (
+                  <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
+                    {r.reason}
+                  </Text>
+                ) : null}
+                <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+                  <TouchableOpacity
+                    style={[styles.smallBtn, { backgroundColor: colors.danger }]}
+                    onPress={async () => {
+                      await deletePost(r.post_id);
+                      loadSection('postReports');
+                    }}>
+                    <Text style={styles.smallBtnText}>{t('admin.deletePost')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>

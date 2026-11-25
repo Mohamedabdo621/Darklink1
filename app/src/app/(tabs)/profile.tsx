@@ -1,18 +1,20 @@
 import React, { useCallback, useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { router, useFocusEffect } from 'expo-router';
 import { TabSwipe } from '../../components/TabSwipe';
 import { useTranslation } from 'react-i18next';
 import { Chip, GlowCard, GradientRing, NeonButton, Screen } from '../../components/ui';
 import { useAuth } from '../../contexts/AuthContext';
+import { appAlert } from '../../lib/dialog';
 import { supabase } from '../../lib/supabase';
 import { shownNameOf } from '../../lib/types';
 import {
   fetchMyLevel,
-  fetchMyReferralCode,
   fetchMyReferralCount,
   type MyLevel,
 } from '../../services/economy';
+import { fetchMyReferralStats } from '../../services/timeline';
 import { ACHIEVEMENT_KEYS, fetchMyAchievements } from '../../services/features';
 import { avatarSignedUrl } from '../../services/profile';
 import { colors, fonts, radius, spacing } from '../../theme';
@@ -27,14 +29,36 @@ export default function ProfileTab() {
   const [myLevel, setMyLevel] = useState<MyLevel | null>(null);
   const [refCode, setRefCode] = useState('');
   const [refCount, setRefCount] = useState(0);
+  const [refEarned, setRefEarned] = useState(0);
+
+  const inviteLink = `https://mohamedabdo621.github.io/Darklink1/register?ref=${refCode}`;
+
+  const shareInvite = async () => {
+    if (!refCode) return;
+    await Share.share({
+      message: t('referral.shareText', { code: refCode, link: inviteLink }),
+    });
+  };
+
+  const copyInviteCode = async () => {
+    if (!refCode) return;
+    await Clipboard.setStringAsync(refCode);
+    appAlert('✓', t('referral.copied'));
+  };
 
   const load = useCallback(async () => {
     if (!profile) return;
     setAvatar(await avatarSignedUrl(profile.avatar_url));
     setAchievements(await fetchMyAchievements(profile.id));
     setMyLevel(await fetchMyLevel());
-    setRefCode(await fetchMyReferralCode());
-    setRefCount(await fetchMyReferralCount(profile.id));
+    const stats = await fetchMyReferralStats();
+    if (stats) {
+      setRefCode(stats.code);
+      setRefCount(stats.invited);
+      setRefEarned(stats.gems_earned);
+    } else {
+      setRefCount(await fetchMyReferralCount(profile.id));
+    }
     const r = await supabase
       .from('gift_sends')
       .select('id', { count: 'exact', head: true })
@@ -168,6 +192,21 @@ export default function ProfileTab() {
             <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
               {t('referral.invited', { count: refCount })}
             </Text>
+          </View>
+          <Text style={{ color: colors.gold, fontSize: fonts.sizes.sm, marginTop: 4, fontWeight: '700' }}>
+            💎 {t('referral.earned', { count: refEarned })}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
+            <View style={{ flex: 1 }}>
+              <NeonButton title={`📤 ${t('referral.share')}`} onPress={shareInvite} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <NeonButton
+                title={`📋 ${t('referral.copy')}`}
+                variant="ghost"
+                onPress={copyInviteCode}
+              />
+            </View>
           </View>
         </GlowCard>
 

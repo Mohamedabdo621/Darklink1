@@ -2,18 +2,23 @@ import React, { useState } from 'react';
 import { StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { appAlert } from '../../lib/dialog';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Logo, NeonButton, NeonInput, Screen } from '../../components/ui';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { isValidEmail, signUp } from '../../services/auth';
+import { bindReferral } from '../../services/economy';
 import { colors, fonts, spacing } from '../../theme';
 
 export default function Register() {
   const { t } = useTranslation();
+  const { ref } = useLocalSearchParams<{ ref?: string }>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [inviteCode, setInviteCode] = useState(
+    typeof ref === 'string' ? ref.toUpperCase() : '',
+  );
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string; confirm?: string }>({});
@@ -45,6 +50,13 @@ ${res.raw}` : t(res.errorKey));
     if (res.needsConfirm) {
       router.push({ pathname: '/(auth)/check-email', params: { email, mode: 'signup' } });
     } else {
+      const code = inviteCode.trim().toUpperCase();
+      if (code) {
+        const bound = await bindReferral(code);
+        if (!bound.ok && bound.reason === 'bad_code') {
+          appAlert(t('common.error'), t('referral.err_bad_code'));
+        }
+      }
       router.replace('/(tabs)/home');
     }
   };
@@ -82,6 +94,13 @@ ${res.raw}` : t(res.errorKey));
           secureTextEntry
           error={errors.confirm}
           placeholder="••••••••"
+        />
+        <NeonInput
+          label={`${t('referral.bindTitle')} (${t('common.optional')})`}
+          value={inviteCode}
+          onChangeText={(v) => setInviteCode(v.toUpperCase())}
+          autoCapitalize="characters"
+          placeholder="DLXXXXXX"
         />
 
         <View style={styles.agreeRow}>
