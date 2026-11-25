@@ -6,6 +6,7 @@ import { Screen } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import type { AppNotification } from '../lib/types';
+import { registerPushToken, requestNotificationPermission } from '../services/push';
 import { fetchNotifications, markAllNotificationsRead } from '../services/wallet';
 import { colors, fonts, spacing } from '../theme';
 
@@ -122,6 +123,14 @@ export default function Notifications() {
   return (
     <Screen>
       <Text style={styles.title}>{t('notifications.title')}</Text>
+      <TouchableOpacity
+        style={styles.enableBtn}
+        onPress={async () => {
+          const ok = await requestNotificationPermission();
+          if (ok && me) await registerPushToken(me.id);
+        }}>
+        <Text style={styles.enableBtnText}>🔔 {t('notifications.enablePush')}</Text>
+      </TouchableOpacity>
       <FlatList
         data={items}
         keyExtractor={(n) => n.id}
@@ -153,6 +162,16 @@ export default function Notifications() {
 }
 
 const styles = StyleSheet.create({
+  enableBtn: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  enableBtnText: { color: colors.text, fontWeight: '700', fontSize: fonts.sizes.sm },
   title: {
     color: colors.text,
     fontSize: fonts.sizes.xl,

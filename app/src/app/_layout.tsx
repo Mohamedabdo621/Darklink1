@@ -5,16 +5,21 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import AppDialog from '../components/AppDialog';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { initI18n } from '../i18n';
 import { AuthProvider } from '../contexts/AuthContext';
-import { setupNotificationHandler } from '../services/push';
+import { setNavReady, setupNotificationHandler } from '../services/push';
 import { colors } from '../theme';
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    initI18n().finally(() => setReady(true));
+    initI18n().finally(() => {
+      setReady(true);
+      // التنقل من الإشعارات مسموح فقط بعد اكتمال التحميل
+      setNavReady();
+    });
     setupNotificationHandler();
   }, []);
 
@@ -33,21 +38,23 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <KeyboardProvider>
-        <AuthProvider>
-          <StatusBar style="light" />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: colors.bg },
-              animation: 'slide_from_right',
-              gestureEnabled: true,
-            }}
-          />
-          <AppDialog />
-        </AuthProvider>
-      </KeyboardProvider>
-    </GestureHandlerRootView>
+    <ErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <KeyboardProvider>
+          <AuthProvider>
+            <StatusBar style="light" />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: colors.bg },
+                animation: 'slide_from_right',
+                gestureEnabled: true,
+              }}
+            />
+            <AppDialog />
+          </AuthProvider>
+        </KeyboardProvider>
+      </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }
