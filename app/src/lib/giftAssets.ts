@@ -14,3 +14,13 @@ const MAP: Record<string, number> = {
 export function giftImage(asset: string): number | undefined {
   return MAP[asset];
 }
+
+// هدايا موسمية بلا صورة بعد — تُعرض كإيموجي
+const EMOJI: Record<string, string> = {
+  lantern: '🏮',
+  fireworks: '🎆',
+};
+
+export function giftEmoji(asset: string): string | null {
+  return EMOJI[asset] ?? null;
+}

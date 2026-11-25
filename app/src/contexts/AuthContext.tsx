@@ -42,7 +42,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(null);
       return;
     }
-    setProfile(await fetchMyProfile(userId));
+    const p = await fetchMyProfile(userId);
+    if (p?.is_suspended) {
+      // حساب موقوف من الإدارة — تسجيل خروج فوري
+      await supabase.auth.signOut();
+      setProfile(null);
+      return;
+    }
+    setProfile(p);
     registerPushToken(userId);
   }, []);
 

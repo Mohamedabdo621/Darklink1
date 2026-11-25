@@ -1,14 +1,14 @@
 import React, { useCallback, useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { appAlert } from '../lib/dialog';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { GlowCard, NeonButton, Screen } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
-import { giftImage } from '../lib/giftAssets';
+import { giftEmoji, giftImage } from '../lib/giftAssets';
 import type { GemPackage, Gift } from '../lib/types';
+import { activateVipTier } from '../services/economy';
 import {
-  activateVip,
   fetchGiftsCatalog,
   fetchPackages,
   fetchWallet,
@@ -16,7 +16,8 @@ import {
 } from '../services/wallet';
 import { colors, fonts, radius, spacing } from '../theme';
 
-const VIP_PRICE = 1000;
+const VIP_SILVER_PRICE = 500;
+const VIP_GOLD_PRICE = 1000;
 
 export default function Store() {
   const { t } = useTranslation();
@@ -34,7 +35,14 @@ export default function Store() {
       fetchWallet(me.id),
     ]);
     setPackages(p);
-    setGifts(g);
+    setGifts(
+      g.filter(
+        (x) =>
+          !x.seasonal ||
+          !x.available_until ||
+          new Date(x.available_until).getTime() > Date.now(),
+      ),
+    );
     if (w) setBalance(w.balance);
   }, [me]);
 
@@ -70,26 +78,27 @@ export default function Store() {
     );
   };
 
-  const buyVip = () => {
+  const buyVipTier = (tier: 'silver' | 'gold') => {
+    const price = tier === 'silver' ? VIP_SILVER_PRICE : VIP_GOLD_PRICE;
     appAlert(
-      t('store.vipTitle'),
-      t('store.vipPrice', { gems: VIP_PRICE }),
+      tier === 'silver' ? `🥈 ${t('store.vipSilver')}` : `👑 ${t('store.vipGold')}`,
+      t('store.vipPrice', { gems: price }),
       [
         { text: t('common.cancel'), style: 'cancel' },
         {
           text: t('store.vipActivate'),
           onPress: async () => {
-            setBusyId('vip');
-            const res = await activateVip();
+            setBusyId(`vip-${tier}`);
+            const res = await activateVipTier(tier);
             setBusyId(null);
             if (res.ok) {
-              if (res.balance !== undefined) setBalance(res.balance);
+              setBalance((b) => Math.max(0, b - price));
               await refreshProfile();
               appAlert('👑', t('store.vipSuccess'));
-            } else if (res.error === 'insufficient') {
+            } else if (res.error?.includes('insufficient_balance')) {
               appAlert(t('common.error'), t('store.insufficient'));
             } else {
-              appAlert(t('common.error'), t('common.error'));
+              appAlert(t('common.error'), res.error ?? t('common.error'));
             }
           },
         },
@@ -122,6 +131,19 @@ export default function Store() {
                 loading={busyId === pkg.id}
                 onPress={() => buy(pkg)}
               />
+              <TouchableOpacity
+                onPress={() =>
+                  router.push({
+                    pathname: '/manual-pay',
+                    params: {
+                      packageId: pkg.id,
+                      gems: String(pkg.gems),
+                      price: String(pkg.price_egp),
+                    },
+                  })
+                }>
+                <Text style={styles.manualLink}>💳 {t('store.manualPay')}</Text>
+              </TouchableOpacity>
             </GlowCard>
           ))}
         </View>
@@ -133,20 +155,41 @@ export default function Store() {
           </Text>
           {me.is_vip && me.vip_until ? (
             <Text style={{ color: colors.gold, marginTop: spacing.sm, fontWeight: '700' }}>
+              {me.vip_tier === 'silver' ? '🥈' : '👑'}{' '}
               {t('store.vipActive', {
                 date: new Date(me.vip_until).toLocaleDateString(),
               })}
             </Text>
           ) : null}
-          <Text style={{ color: colors.gold, marginVertical: spacing.sm, fontWeight: '700' }}>
-            {t('store.vipPrice', { gems: VIP_PRICE })}
-          </Text>
-          <NeonButton
-            title={t('store.vipActivate')}
-            variant="gold"
-            loading={busyId === 'vip'}
-            onPress={buyVip}
-          />
+          <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.md }}>
+            <View style={{ flex: 1, gap: spacing.sm }}>
+              <Text style={{ color: colors.text, fontWeight: '700' }}>
+                🥈 {t('store.vipSilver')}
+              </Text>
+              <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
+                {t('store.vipPrice', { gems: VIP_SILVER_PRICE })}
+              </Text>
+              <NeonButton
+                title={t('store.vipActivate')}
+                loading={busyId === 'vip-silver'}
+                onPress={() => buyVipTier('silver')}
+              />
+            </View>
+            <View style={{ flex: 1, gap: spacing.sm }}>
+              <Text style={{ color: colors.gold, fontWeight: '700' }}>
+                👑 {t('store.vipGold')}
+              </Text>
+              <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
+                {t('store.vipPrice', { gems: VIP_GOLD_PRICE })}
+              </Text>
+              <NeonButton
+                title={t('store.vipActivate')}
+                variant="gold"
+                loading={busyId === 'vip-gold'}
+                onPress={() => buyVipTier('gold')}
+              />
+            </View>
+          </View>
         </GlowCard>
 
         <Text style={styles.section}>{t('store.giftsCatalog')}</Text>
@@ -155,6 +198,8 @@ export default function Store() {
             <View key={g.id} style={styles.giftItem}>
               {giftImage(g.asset) ? (
                 <Image source={giftImage(g.asset)} style={styles.giftImg} />
+              ) : giftEmoji(g.asset) ? (
+                <Text style={{ fontSize: 40 }}>{giftEmoji(g.asset)}</Text>
               ) : null}
               <Text style={{ color: colors.text, fontSize: fonts.sizes.sm }}>
                 {t(`gifts.${g.name_key}`)}
@@ -201,4 +246,10 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   giftImg: { width: 62, height: 62, borderRadius: radius.md },
+  manualLink: {
+    color: colors.primaryBright,
+    fontSize: fonts.sizes.sm,
+    fontWeight: '700',
+    marginTop: spacing.sm,
+  },
 });

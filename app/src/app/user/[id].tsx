@@ -5,9 +5,10 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Chip, GlowCard, NeonButton, Screen } from '../../components/ui';
 import { useAuth } from '../../contexts/AuthContext';
-import { giftImage } from '../../lib/giftAssets';
+import { giftEmoji, giftImage } from '../../lib/giftAssets';
 import type { PublicProfile } from '../../lib/types';
 import { getOrCreateConversation } from '../../services/chat';
+import { fetchUserLevel } from '../../services/economy';
 import { recordProfileVisit } from '../../services/features';
 import { avatarSignedUrl } from '../../services/profile';
 import {
@@ -30,6 +31,7 @@ export default function UserProfile() {
   const [gifts, setGifts] = useState<ReceivedGiftSummary[]>([]);
   const [blocked, setBlocked] = useState(false);
   const [seenText, setSeenText] = useState<string | null>(null);
+  const [level, setLevel] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
@@ -42,6 +44,7 @@ export default function UserProfile() {
     setUser(u);
     setGifts(g);
     setBlocked(b);
+    setLevel(await fetchUserLevel(id));
     if (u) {
       setAvatar(await avatarSignedUrl(u.avatar_url));
       recordProfileVisit(id);
@@ -129,6 +132,7 @@ export default function UserProfile() {
               }
             />
             {user.is_vip ? <Chip label="👑 VIP" gold /> : null}
+            {level ? <Chip label={`⭐ ${t('level.level')} ${level}`} /> : null}
           </View>
           {seenText ? (
             <Text style={{ color: colors.faint, fontSize: fonts.sizes.xs, marginTop: spacing.sm }}>
@@ -161,6 +165,8 @@ export default function UserProfile() {
               <View key={g.name_key} style={styles.giftItem}>
                 {giftImage(g.asset) ? (
                   <Image source={giftImage(g.asset)} style={styles.giftImg} />
+                ) : giftEmoji(g.asset) ? (
+                  <Text style={{ fontSize: 34 }}>{giftEmoji(g.asset)}</Text>
                 ) : null}
                 <Text style={{ color: colors.text, fontSize: fonts.sizes.xs }}>
                   {t(`gifts.${g.name_key}`)} ×{g.total}
@@ -177,6 +183,16 @@ export default function UserProfile() {
             variant="gold"
             onPress={() =>
               router.push({ pathname: '/gift-picker', params: { userId: user.id } })
+            }
+          />
+          <NeonButton
+            title={`🔄 ${t('transfer.title')}`}
+            variant="ghost"
+            onPress={() =>
+              router.push({
+                pathname: '/transfer',
+                params: { userId: user.id, name: user.shown_name },
+              })
             }
           />
         </View>

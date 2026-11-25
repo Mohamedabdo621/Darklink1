@@ -6,6 +6,12 @@ import { Chip, GlowCard, NeonButton, Screen } from '../../components/ui';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { shownNameOf } from '../../lib/types';
+import {
+  fetchMyLevel,
+  fetchMyReferralCode,
+  fetchMyReferralCount,
+  type MyLevel,
+} from '../../services/economy';
 import { ACHIEVEMENT_KEYS, fetchMyAchievements } from '../../services/features';
 import { avatarSignedUrl } from '../../services/profile';
 import { colors, fonts, radius, spacing } from '../../theme';
@@ -17,11 +23,17 @@ export default function ProfileTab() {
   const [received, setReceived] = useState(0);
   const [sent, setSent] = useState(0);
   const [achievements, setAchievements] = useState<string[]>([]);
+  const [myLevel, setMyLevel] = useState<MyLevel | null>(null);
+  const [refCode, setRefCode] = useState('');
+  const [refCount, setRefCount] = useState(0);
 
   const load = useCallback(async () => {
     if (!profile) return;
     setAvatar(await avatarSignedUrl(profile.avatar_url));
     setAchievements(await fetchMyAchievements(profile.id));
+    setMyLevel(await fetchMyLevel());
+    setRefCode(await fetchMyReferralCode());
+    setRefCount(await fetchMyReferralCount(profile.id));
     const r = await supabase
       .from('gift_sends')
       .select('id', { count: 'exact', head: true })
@@ -90,6 +102,71 @@ export default function ProfileTab() {
           </GlowCard>
         </View>
 
+        {/* المستوى والخبرة */}
+        {myLevel ? (
+          <GlowCard style={{ marginTop: spacing.lg }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: fonts.sizes.md }}>
+                ⭐ {t('level.level')} {myLevel.level}
+              </Text>
+              <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
+                {myLevel.xp} {t('level.xp')}
+                {myLevel.next_at
+                  ? ` • ${t('level.nextAt', { at: myLevel.next_at })}`
+                  : ` • ${t('level.max')}`}
+              </Text>
+            </View>
+            {myLevel.next_at ? (
+              <View style={styles.levelBarBg}>
+                <View
+                  style={[
+                    styles.levelBarFill,
+                    {
+                      width: `${Math.min(100, Math.round((myLevel.xp / myLevel.next_at) * 100))}%`,
+                    },
+                  ]}
+                />
+              </View>
+            ) : null}
+          </GlowCard>
+        ) : null}
+
+        {/* الدعوات */}
+        <GlowCard style={{ marginTop: spacing.md }}>
+          <Text style={{ color: colors.text, fontWeight: '700', fontSize: fonts.sizes.md }}>
+            🎁 {t('referral.title')}
+          </Text>
+          <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm, marginTop: 4, lineHeight: 19 }}>
+            {t('referral.desc')}
+          </Text>
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginTop: spacing.sm,
+            }}>
+            <Text
+              selectable
+              style={{
+                color: colors.gold,
+                fontSize: fonts.sizes.lg,
+                fontWeight: fonts.weights.black,
+                letterSpacing: 1,
+              }}>
+              {refCode}
+            </Text>
+            <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
+              {t('referral.invited', { count: refCount })}
+            </Text>
+          </View>
+        </GlowCard>
+
         {/* الإنجازات */}
         <Text style={styles.sectionTitle}>🏆 {t('achievements.title')}</Text>
         <View style={styles.achGrid}>
@@ -114,6 +191,18 @@ export default function ProfileTab() {
             variant="ghost"
             onPress={() => router.push('/profile-visitors')}
           />
+          <NeonButton
+            title={`🎯 ${t('quests.title')}`}
+            variant="ghost"
+            onPress={() => router.push('/quests')}
+          />
+          {profile.is_admin ? (
+            <NeonButton
+              title={`🛠 ${t('admin.title')}`}
+              variant="gold"
+              onPress={() => router.push('/admin')}
+            />
+          ) : null}
           <NeonButton
             title={t('profile.privacySettings')}
             variant="ghost"
@@ -191,6 +280,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 15,
   },
+  levelBarBg: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.surfaceLight,
+    overflow: 'hidden',
+    marginTop: spacing.sm,
+  },
+  levelBarFill: { height: '100%', backgroundColor: colors.gold, borderRadius: 4 },
   statsRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
   stat: { flex: 1, alignItems: 'center' },
   statNum: { color: colors.text, fontSize: fonts.sizes.xxl, fontWeight: fonts.weights.black },

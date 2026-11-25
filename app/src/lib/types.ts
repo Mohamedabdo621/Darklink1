@@ -19,6 +19,9 @@ export interface Profile {
   last_seen_at: string | null;
   is_vip: boolean;
   vip_until: string | null;
+  vip_tier: 'silver' | 'gold' | null;
+  is_admin: boolean;
+  is_suspended: boolean;
   language: Language;
   created_at: string;
   updated_at: string;
@@ -45,7 +48,8 @@ export interface Wallet {
 }
 
 export type TransactionType =
-  | 'purchase' | 'gift_sent' | 'gift_received' | 'bonus' | 'refund' | 'vip';
+  | 'purchase' | 'gift_sent' | 'gift_received' | 'bonus' | 'refund' | 'vip'
+  | 'transfer_sent' | 'transfer_received';
 
 export interface Transaction {
   id: string;
@@ -74,6 +78,8 @@ export interface Gift {
   price_gems: number;
   active: boolean;
   sort: number;
+  seasonal?: boolean;
+  available_until?: string | null;
 }
 
 export interface GiftSend {

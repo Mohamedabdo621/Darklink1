@@ -1,9 +1,17 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { appAlert } from '../lib/dialog';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { GlowCard, Screen } from '../components/ui';
+import { GlowCard, NeonButton, Screen } from '../components/ui';
+import { bindReferral } from '../services/economy';
 import { useAuth } from '../contexts/AuthContext';
 import { setLanguage } from '../i18n';
 import { supabase } from '../lib/supabase';
@@ -34,6 +42,18 @@ export default function Settings() {
       setBlockedList(list);
     })();
   }, [profile]);
+
+  const [refInput, setRefInput] = React.useState('');
+  const onBindReferral = async () => {
+    if (!refInput.trim()) return;
+    const res = await bindReferral(refInput);
+    if (res.ok) {
+      setRefInput('');
+      appAlert('🎁', t('referral.bound'));
+    } else {
+      appAlert(t('common.error'), t(`referral.err_${res.reason ?? 'error'}`));
+    }
+  };
 
   const unblock = async (otherId: string) => {
     if (!profile) return;
@@ -99,6 +119,24 @@ export default function Settings() {
           ))}
         </GlowCard>
 
+        <Text style={styles.section}>🎁 {t('referral.bindTitle')}</Text>
+        <GlowCard>
+          <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm, lineHeight: 19 }}>
+            {t('referral.bindDesc')}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+            <TextInput
+              style={styles.refInput}
+              value={refInput}
+              onChangeText={setRefInput}
+              placeholder="DLXXXXXX"
+              placeholderTextColor={colors.faint}
+              autoCapitalize="characters"
+            />
+            <NeonButton title={t('referral.bind')} onPress={onBindReferral} />
+          </View>
+        </GlowCard>
+
         <Text style={styles.section}>{t('settings.account')}</Text>
         <GlowCard>
           <TouchableOpacity
@@ -153,6 +191,17 @@ export default function Settings() {
 }
 
 const styles = StyleSheet.create({
+  refInput: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: colors.text,
+    fontSize: fonts.sizes.md,
+  },
   title: {
     color: colors.text,
     fontSize: fonts.sizes.xl,

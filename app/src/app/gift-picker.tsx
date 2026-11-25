@@ -5,7 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Screen } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
-import { giftImage } from '../lib/giftAssets';
+import { giftEmoji, giftImage } from '../lib/giftAssets';
 import type { Gift } from '../lib/types';
 import { fetchGiftsCatalog, fetchWallet, sendGift } from '../services/wallet';
 import { colors, fonts, radius, spacing } from '../theme';
@@ -23,7 +23,14 @@ export default function GiftPicker() {
   const load = useCallback(async () => {
     if (!me) return;
     const [g, w] = await Promise.all([fetchGiftsCatalog(), fetchWallet(me.id)]);
-    setGifts(g);
+    setGifts(
+      g.filter(
+        (x) =>
+          !x.seasonal ||
+          !x.available_until ||
+          new Date(x.available_until).getTime() > Date.now(),
+      ),
+    );
     if (w) setBalance(w.balance);
   }, [me]);
 
@@ -85,7 +92,7 @@ export default function GiftPicker() {
             {giftImage(sentGift.asset) ? (
               <Image source={giftImage(sentGift.asset)} style={styles.sentImg} />
             ) : (
-              <Text style={{ fontSize: 90 }}>🎁</Text>
+              <Text style={{ fontSize: 90 }}>{giftEmoji(sentGift.asset) ?? '🎁'}</Text>
             )}
           </Animated.View>
           <Text style={styles.sentText}>{t('giftPicker.sent')}</Text>
@@ -115,10 +122,17 @@ export default function GiftPicker() {
               onPress={() => pick(item)}>
               {giftImage(item.asset) ? (
                 <Image source={giftImage(item.asset)} style={styles.img} />
+              ) : giftEmoji(item.asset) ? (
+                <Text style={{ fontSize: 44 }}>{giftEmoji(item.asset)}</Text>
               ) : null}
               <Text style={{ color: colors.text, fontSize: fonts.sizes.xs }}>
                 {t(`gifts.${item.name_key}`)}
               </Text>
+              {item.seasonal ? (
+                <Text style={{ color: colors.gold, fontSize: 10 }}>
+                  ✨ {t('giftPicker.seasonal')}
+                </Text>
+              ) : null}
               <Text style={{ color: colors.primaryBright, fontSize: fonts.sizes.xs }}>
                 {busyId === item.id ? '...' : `${item.price_gems} 💎`}
               </Text>

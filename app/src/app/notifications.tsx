@@ -60,6 +60,36 @@ export default function Notifications() {
   }, [me]);
 
   const textFor = (n: AppNotification): string => {
+    // إشعارات الحساب بأنواع فرعية (دفع/تبادل/دعوات/مسابقة/إدارة)
+    if (n.type === 'account' && typeof n.payload.kind === 'string') {
+      const kind = n.payload.kind as string;
+      if (kind === 'payment_rejected') {
+        return t('notifications.paymentRejected', {
+          reason: String(n.payload.reason ?? ''),
+        });
+      }
+      if (kind === 'payment_order') return t('notifications.paymentOrder');
+      if (kind === 'transfer_received') {
+        return t('notifications.transferReceived', {
+          amount: Number(n.payload.amount ?? 0),
+        });
+      }
+      if (kind === 'referral_reward') {
+        return t('notifications.referralReward', {
+          amount: Number(n.payload.amount ?? 0),
+        });
+      }
+      if (kind === 'contest_win') {
+        return t('notifications.contestWin', {
+          amount: Number(n.payload.amount ?? 0),
+        });
+      }
+      if (kind === 'admin_grant') {
+        return t('notifications.adminGrant', {
+          amount: Number(n.payload.amount ?? 0),
+        });
+      }
+    }
     switch (n.type) {
       case 'gift_received':
         return t('notifications.giftReceived', {

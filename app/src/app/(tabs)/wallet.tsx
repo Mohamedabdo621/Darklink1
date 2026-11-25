@@ -3,6 +3,7 @@ import {
   FlatList,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -10,9 +11,11 @@ import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { GlowCard, Screen } from '../../components/ui';
 import { useAuth } from '../../contexts/AuthContext';
+import { appAlert } from '../../lib/dialog';
 import type { Transaction } from '../../lib/types';
+import { redeemPromo } from '../../services/economy';
 import { fetchTransactions, fetchWallet } from '../../services/wallet';
-import { colors, fonts, spacing } from '../../theme';
+import { colors, fonts, radius, spacing } from '../../theme';
 
 const TX_ICON: Record<Transaction['type'], string> = {
   purchase: '💎',
@@ -21,6 +24,8 @@ const TX_ICON: Record<Transaction['type'], string> = {
   bonus: '⭐',
   refund: '↩️',
   vip: '👑',
+  transfer_sent: '📤',
+  transfer_received: '📥',
 };
 
 const TX_KEY: Record<Transaction['type'], string> = {
@@ -30,6 +35,8 @@ const TX_KEY: Record<Transaction['type'], string> = {
   bonus: 'wallet.txBonus',
   refund: 'wallet.txRefund',
   vip: 'wallet.txVip',
+  transfer_sent: 'wallet.txTransferSent',
+  transfer_received: 'wallet.txTransferReceived',
 };
 
 export default function WalletTab() {
@@ -68,6 +75,27 @@ export default function WalletTab() {
     setRefreshing(false);
   };
 
+  const [promoCode, setPromoCode] = useState('');
+  const [promoBusy, setPromoBusy] = useState(false);
+  const onRedeem = async () => {
+    if (!promoCode.trim() || promoBusy) return;
+    setPromoBusy(true);
+    const res = await redeemPromo(promoCode);
+    setPromoBusy(false);
+    if (res.ok) {
+      setPromoCode('');
+      appAlert(
+        '🎟',
+        res.kind === 'gems'
+          ? t('wallet.promoGems', { value: res.value })
+          : t('wallet.promoVip', { value: res.value }),
+      );
+      load(0, true);
+    } else {
+      appAlert(t('common.error'), t(`wallet.promoErr_${res.reason ?? 'invalid'}`));
+    }
+  };
+
   return (
     <Screen>
       <Text style={styles.title}>{t('wallet.title')}</Text>
@@ -90,7 +118,28 @@ export default function WalletTab() {
             <Text style={styles.actionText}>🎁 {t('wallet.giftsHistory')}</Text>
           </TouchableOpacity>
         </View>
+        <TouchableOpacity
+          style={[styles.actionBtn, { marginTop: spacing.md, backgroundColor: colors.card }]}
+          onPress={() => router.push('/my-orders')}>
+          <Text style={styles.actionText}>🧾 {t('wallet.myOrders')}</Text>
+        </TouchableOpacity>
       </GlowCard>
+
+      <View style={styles.promoRow}>
+        <TextInput
+          style={styles.promoInput}
+          value={promoCode}
+          onChangeText={setPromoCode}
+          placeholder={t('wallet.promoPlaceholder')}
+          placeholderTextColor={colors.faint}
+          autoCapitalize="characters"
+        />
+        <TouchableOpacity style={styles.promoBtn} onPress={onRedeem}>
+          <Text style={styles.actionText}>
+            {promoBusy ? '...' : `🎟 ${t('wallet.promoRedeem')}`}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       <Text style={styles.section}>{t('wallet.history')}</Text>
       <FlatList
@@ -160,6 +209,31 @@ const styles = StyleSheet.create({
     fontSize: fonts.sizes.lg,
     fontWeight: fonts.weights.bold,
     marginBottom: spacing.sm,
+  },
+  promoRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  promoInput: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    color: colors.text,
+    fontSize: fonts.sizes.md,
+  },
+  promoBtn: {
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   empty: { color: colors.muted, textAlign: 'center', marginTop: spacing.lg },
   txRow: {
