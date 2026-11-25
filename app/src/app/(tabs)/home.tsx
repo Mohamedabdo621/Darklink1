@@ -1,9 +1,10 @@
 import React, { useCallback, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { TabSwipe } from '../../components/TabSwipe';
 import { useTranslation } from 'react-i18next';
-import { Chip, GlowCard, Logo, NeonButton, Screen } from '../../components/ui';
+import { Chip, GlowCard, GradientRing, Logo, NeonButton, Screen } from '../../components/ui';
 import { useAuth } from '../../contexts/AuthContext';
 import { appAlert } from '../../lib/dialog';
 import { supabase } from '../../lib/supabase';
@@ -18,7 +19,7 @@ import {
 import { avatarSignedUrl } from '../../services/profile';
 import { fetchPublicProfile } from '../../services/social';
 import { fetchUnreadNotifications } from '../../services/wallet';
-import { colors, fonts, radius, spacing } from '../../theme';
+import { colors, fonts, radius, spacing, textGlow } from '../../theme';
 
 interface StoryGroup {
   userId: string;
@@ -115,7 +116,7 @@ export default function Home() {
           <TouchableOpacity
             onPress={() => router.push('/notifications')}
             style={styles.bell}>
-            <Text style={{ fontSize: 20 }}>🔔</Text>
+            <Ionicons name="notifications-outline" size={24} color={colors.text} />
             {unreadNotifs > 0 ? (
               <View style={styles.bellBadge}>
                 <Text style={{ color: colors.white, fontSize: 9, fontWeight: '700' }}>
@@ -135,14 +136,16 @@ export default function Home() {
           <TouchableOpacity
             style={styles.storyItem}
             onPress={() => router.push('/story-new')}>
-            <View style={styles.storyRing}>
-              {avatar ? (
-                <Image source={{ uri: avatar }} style={styles.storyAvatar} />
-              ) : (
-                <View style={[styles.storyAvatar, styles.avatarFallback]}>
-                  <Text style={{ fontSize: 20 }}>👤</Text>
-                </View>
-              )}
+            <View>
+              <GradientRing size={62}>
+                {avatar ? (
+                  <Image source={{ uri: avatar }} style={styles.storyAvatar} />
+                ) : (
+                  <View style={[styles.storyAvatar, styles.avatarFallback]}>
+                    <Text style={{ fontSize: 20 }}>👤</Text>
+                  </View>
+                )}
+              </GradientRing>
               <View style={styles.storyPlus}>
                 <Text style={{ color: colors.white, fontSize: 13, fontWeight: '700' }}>
                   +
@@ -163,7 +166,7 @@ export default function Home() {
                     params: { userId: g.userId },
                   })
                 }>
-                <View style={styles.storyRing}>
+                <GradientRing size={62}>
                   {g.avatar ? (
                     <Image source={{ uri: g.avatar }} style={styles.storyAvatar} />
                   ) : (
@@ -171,7 +174,7 @@ export default function Home() {
                       <Text style={{ fontSize: 20 }}>👤</Text>
                     </View>
                   )}
-                </View>
+                </GradientRing>
                 <Text style={styles.storyLabel} numberOfLines={1}>
                   {g.user?.shown_name ?? '—'}
                 </Text>
@@ -181,13 +184,15 @@ export default function Home() {
 
         <GlowCard style={styles.identityCard}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-            {avatar ? (
-              <Image source={{ uri: avatar }} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatar, styles.avatarFallback]}>
-                <Text style={{ fontSize: 22 }}>👤</Text>
-              </View>
-            )}
+            <GradientRing size={62}>
+              {avatar ? (
+                <Image source={{ uri: avatar }} style={styles.avatar} />
+              ) : (
+                <View style={[styles.avatar, styles.avatarFallback]}>
+                  <Text style={{ fontSize: 22 }}>👤</Text>
+                </View>
+              )}
+            </GradientRing>
             <View style={{ flex: 1 }}>
               <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
                 {t('home.welcome')}
@@ -211,9 +216,12 @@ export default function Home() {
         </GlowCard>
 
         <GlowCard style={styles.walletCard}>
-          <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
-            💎 {t('home.balance')}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Ionicons name="diamond" size={15} color={colors.accent} />
+            <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
+              {t('home.balance')}
+            </Text>
+          </View>
           <Text style={styles.balance}>
             {wallet?.balance ?? 0}{' '}
             <Text style={{ fontSize: fonts.sizes.md, color: colors.primaryBright }}>
@@ -225,7 +233,7 @@ export default function Home() {
         {/* المكافأة اليومية */}
         <GlowCard style={styles.walletCard}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-            <Text style={{ fontSize: 30 }}>🎁</Text>
+            <Ionicons name="gift-outline" size={30} color={colors.accent} />
             <View style={{ flex: 1 }}>
               <Text style={{ color: colors.text, fontSize: fonts.sizes.md, fontWeight: fonts.weights.bold }}>
                 {t('home.dailyTitle')}
@@ -254,32 +262,32 @@ export default function Home() {
         <Text style={styles.sectionTitle}>{t('home.shortcuts')}</Text>
         <View style={styles.grid}>
           <Shortcut
-            emoji="🔮"
+            icon="compass-outline"
             label={t('tabs.discover')}
             onPress={() => router.push('/(tabs)/discover')}
           />
           <Shortcut
-            emoji="💬"
+            icon="chatbubbles-outline"
             label={t('tabs.chats')}
             onPress={() => router.push('/(tabs)/chats')}
           />
           <Shortcut
-            emoji="✏️"
+            icon="pencil-outline"
             label={t('home.editProfile')}
             onPress={() => router.push('/edit-profile')}
           />
           <Shortcut
-            emoji="⚙️"
+            icon="settings-outline"
             label={t('home.settings')}
             onPress={() => router.push('/settings')}
           />
           <Shortcut
-            emoji="👤"
+            icon="person-outline"
             label={t('tabs.profile')}
             onPress={() => router.push('/(tabs)/profile')}
           />
           <Shortcut
-            emoji="🏆"
+            icon="trophy-outline"
             label={t('home.leaderboard')}
             onPress={() => router.push('/leaderboard')}
           />
@@ -291,17 +299,17 @@ export default function Home() {
 }
 
 function Shortcut({
-  emoji,
+  icon,
   label,
   onPress,
 }: {
-  emoji: string;
+  icon: string;
   label: string;
   onPress: () => void;
 }) {
   return (
     <TouchableOpacity onPress={onPress} style={styles.shortcut}>
-      <Text style={{ fontSize: 26 }}>{emoji}</Text>
+      <Ionicons name={icon as never} size={26} color={colors.primaryBright} />
       <Text style={styles.shortcutLabel}>{label}</Text>
     </TouchableOpacity>
   );
@@ -328,15 +336,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   storyItem: { alignItems: 'center', width: 68 },
-  storyRing: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
-    borderWidth: 2,
-    borderColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   storyAvatar: { width: 54, height: 54, borderRadius: 27 },
   storyPlus: {
     position: 'absolute',
@@ -373,6 +372,7 @@ const styles = StyleSheet.create({
     fontSize: fonts.sizes.hero,
     fontWeight: fonts.weights.black,
     marginTop: 4,
+    ...textGlow,
   },
   sectionTitle: {
     color: colors.text,
@@ -383,9 +383,9 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   shortcut: {
     width: '30%',
-    backgroundColor: colors.card,
+    backgroundColor: colors.glass,
     borderWidth: 1,
-    borderColor: colors.stroke,
+    borderColor: colors.glassBorder,
     borderRadius: radius.lg,
     paddingVertical: spacing.lg,
     alignItems: 'center',

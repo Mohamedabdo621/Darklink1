@@ -3,7 +3,7 @@ import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { TabSwipe } from '../../components/TabSwipe';
 import { useTranslation } from 'react-i18next';
-import { Chip, GlowCard, NeonButton, Screen } from '../../components/ui';
+import { Chip, GlowCard, GradientRing, NeonButton, Screen } from '../../components/ui';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { shownNameOf } from '../../lib/types';
@@ -59,13 +59,15 @@ export default function ProfileTab() {
       <Screen>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={{ alignItems: 'center', marginTop: spacing.lg }}>
-          {avatar ? (
-            <Image source={{ uri: avatar }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatar, styles.avatarFallback]}>
-              <Text style={{ fontSize: 40 }}>👤</Text>
-            </View>
-          )}
+          <GradientRing size={110}>
+            {avatar ? (
+              <Image source={{ uri: avatar }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, styles.avatarFallback]}>
+                <Text style={{ fontSize: 40 }}>👤</Text>
+              </View>
+            )}
+          </GradientRing>
           <Text style={styles.name}>{shownNameOf(profile)}</Text>
           <Text style={{ color: colors.faint }}>@{profile.anonymous_alias}</Text>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.sm }}>

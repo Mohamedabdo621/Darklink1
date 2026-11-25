@@ -2,25 +2,26 @@ import React, { forwardRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Tabs, TabList, TabTrigger, TabSlot } from 'expo-router/ui';
 import type { TabTriggerSlotProps } from 'expo-router/ui';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
 import { colors, fonts } from '../../theme';
 
-// شريط تبويبات سفلي بستايل التطبيق + التنقل بين التبويبات بالسحب
+// شريط تبويبات سفلي زجاجي بأيقونات خطية متوهجة (ستايل Muse)
 // (مبني على Tabs المدمج في expo-router/ui — بديل material-top-tabs الذي كان
 // يفشل عند التسجيل: Couldn't register the navigator)
 const TABS = [
-  { name: 'home', href: '/(tabs)/home', icon: '🏠', labelKey: 'tabs.home' },
-  { name: 'discover', href: '/(tabs)/discover', icon: '🔮', labelKey: 'tabs.discover' },
-  { name: 'chats', href: '/(tabs)/chats', icon: '💬', labelKey: 'tabs.chats' },
-  { name: 'wallet', href: '/(tabs)/wallet', icon: '💎', labelKey: 'tabs.wallet' },
-  { name: 'profile', href: '/(tabs)/profile', icon: '👤', labelKey: 'tabs.profile' },
+  { name: 'home', href: '/(tabs)/home', icon: 'home-outline', iconFocused: 'home', labelKey: 'tabs.home' },
+  { name: 'discover', href: '/(tabs)/discover', icon: 'compass-outline', iconFocused: 'compass', labelKey: 'tabs.discover' },
+  { name: 'chats', href: '/(tabs)/chats', icon: 'chatbubbles-outline', iconFocused: 'chatbubbles', labelKey: 'tabs.chats' },
+  { name: 'wallet', href: '/(tabs)/wallet', icon: 'diamond-outline', iconFocused: 'diamond', labelKey: 'tabs.wallet' },
+  { name: 'profile', href: '/(tabs)/profile', icon: 'person-outline', iconFocused: 'person', labelKey: 'tabs.profile' },
 ] as const;
 
 const TabButton = forwardRef<
   any,
-  TabTriggerSlotProps & { icon: string; label: string }
->(function TabButton({ icon, label, isFocused, ...props }, ref) {
+  TabTriggerSlotProps & { icon: string; iconFocused: string; label: string }
+>(function TabButton({ icon, iconFocused, label, isFocused, ...props }, ref) {
   return (
     <Pressable
       ref={ref}
@@ -30,7 +31,16 @@ const TabButton = forwardRef<
         props.onPress?.(e);
       }}
       style={styles.tab}>
-      <Text style={{ fontSize: 21, opacity: isFocused ? 1 : 0.45 }}>{icon}</Text>
+      <Ionicons
+        name={(isFocused ? iconFocused : icon) as never}
+        size={24}
+        color={isFocused ? colors.accent : colors.faint}
+        style={
+          isFocused
+            ? { textShadowColor: 'rgba(232,121,249,0.8)', textShadowRadius: 10 }
+            : undefined
+        }
+      />
       <Text
         style={[
           styles.label,
@@ -55,7 +65,11 @@ export default function TabsLayout() {
             name={tab.name}
             href={tab.href}
             asChild>
-            <TabButton icon={tab.icon} label={t(tab.labelKey)} />
+            <TabButton
+              icon={tab.icon}
+              iconFocused={tab.iconFocused}
+              label={t(tab.labelKey)}
+            />
           </TabTrigger>
         ))}
       </TabList>
@@ -66,9 +80,9 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
-    backgroundColor: '#0d0218',
+    backgroundColor: 'rgba(13, 2, 24, 0.88)',
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.stroke,
+    borderTopColor: colors.glassBorder,
     height: 62,
     paddingBottom: 8,
     paddingTop: 6,
@@ -82,5 +96,9 @@ const styles = StyleSheet.create({
     height: 3,
     borderRadius: 2,
     backgroundColor: colors.accent,
+    shadowColor: colors.accent,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 6,
   },
 });

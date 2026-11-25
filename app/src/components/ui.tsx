@@ -1,18 +1,56 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   StyleSheet,
   Switch,
   Text,
   TextInput,
-  TouchableOpacity,
+  Pressable,
   View,
   type TextInputProps,
   type ViewStyle,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fonts, gradients, radius, shadowGlow, spacing } from '../theme';
+import {
+  colors,
+  fonts,
+  gradients,
+  radius,
+  shadowGlow,
+  shadowGlowSoft,
+  spacing,
+  textGlow,
+} from '../theme';
+
+// نجوم خلفية ثابتة (مولّدة رياضياً — نفس الشكل في كل مرة)
+const STARS = Array.from({ length: 42 }, (_, i) => {
+  const x = (i * 37.7 + 11) % 100;
+  const y = (i * 53.3 + 7) % 100;
+  const size = (i % 3) + 1;
+  const opacity = 0.2 + ((i * 13) % 10) / 18;
+  const accent = i % 7 === 0;
+  return { left: `${x}%`, top: `${y}%`, size, opacity, accent };
+});
+
+function FadeIn({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
+  const [opacity] = useState(() => new Animated.Value(0));
+  const [translate] = useState(() => new Animated.Value(8));
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.timing(translate, { toValue: 0, duration: 280, useNativeDriver: true }),
+    ]).start();
+  }, [opacity, translate]);
+  return (
+    <Animated.View
+      style={[{ flex: 1, opacity, transform: [{ translateY: translate }] }, style]}>
+      {children}
+    </Animated.View>
+  );
+}
 
 export function Screen({
   children,
@@ -23,9 +61,27 @@ export function Screen({
 }) {
   return (
     <SafeAreaView style={[styles.screen, style]}>
-      <View style={styles.glowTop} pointerEvents="none" />
-      <View style={styles.glowBottom} pointerEvents="none" />
-      {children}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        {STARS.map((s, i) => (
+          <View
+            key={i}
+            style={{
+              position: 'absolute',
+              left: s.left as never,
+              top: s.top as never,
+              width: s.size,
+              height: s.size,
+              borderRadius: s.size / 2,
+              backgroundColor: s.accent ? colors.accent : colors.white,
+              opacity: s.opacity,
+            }}
+          />
+        ))}
+        <View style={styles.glowTop} />
+        <View style={styles.glowMid} />
+        <View style={styles.glowBottom} />
+      </View>
+      <FadeIn>{children}</FadeIn>
     </SafeAreaView>
   );
 }
@@ -34,10 +90,53 @@ export function Logo({ size = 40 }: { size?: number }) {
   return (
     <View style={{ alignItems: 'center' }}>
       <Text style={[styles.logo, { fontSize: size }]}>
-        DARK<Text style={{ color: colors.accent }}>LINK</Text>
+        DARK<Text style={styles.logoAccent}>LINK</Text>
       </Text>
-      <View style={styles.logoLine} />
+      <LinearGradient
+        colors={[...gradients.neon]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.logoLine}
+      />
     </View>
+  );
+}
+
+// حلقة تدرج نيون (قوس قزح) حول الصورة الرمزية — مثل الصورة المرجعية
+export function GradientRing({
+  children,
+  size = 88,
+}: {
+  children: React.ReactNode;
+  size?: number;
+}) {
+  return (
+    <LinearGradient
+      colors={[...gradients.rainbow]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        padding: 3,
+        alignItems: 'center',
+        justifyContent: 'center',
+        ...shadowGlow,
+      }}>
+      <View
+        style={{
+          width: size - 6,
+          height: size - 6,
+          borderRadius: (size - 6) / 2,
+          backgroundColor: colors.bg,
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden',
+        }}>
+        {children}
+      </View>
+    </LinearGradient>
   );
 }
 
@@ -55,44 +154,64 @@ export function NeonButton({
   variant?: 'primary' | 'gold' | 'ghost' | 'danger';
 }) {
   const off = disabled || loading;
+  const [scale] = useState(() => new Animated.Value(1));
+  const pressIn = () =>
+    Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, speed: 60, bounciness: 4 }).start();
+  const pressOut = () =>
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 60, bounciness: 6 }).start();
+
+  const content = loading ? (
+    <ActivityIndicator color={colors.white} />
+  ) : (
+    <Text style={styles.btnText}>{title}</Text>
+  );
+
   if (variant === 'ghost' || variant === 'danger') {
     return (
-      <TouchableOpacity
-        onPress={onPress}
-        disabled={off}
-        style={[
-          styles.ghostBtn,
-          variant === 'danger' && { borderColor: colors.danger },
-          off && { opacity: 0.5 },
-        ]}>
-        {loading ? (
-          <ActivityIndicator color={colors.text} />
-        ) : (
-          <Text
-            style={[
-              styles.ghostBtnText,
-              variant === 'danger' && { color: colors.danger },
-            ]}>
-            {title}
-          </Text>
-        )}
-      </TouchableOpacity>
+      <Animated.View style={{ transform: [{ scale }], opacity: off ? 0.5 : 1 }}>
+        <Pressable
+          onPress={onPress}
+          onPressIn={pressIn}
+          onPressOut={pressOut}
+          disabled={off}
+          style={[
+            styles.ghostBtn,
+            variant === 'danger' && { borderColor: colors.danger },
+          ]}>
+          {loading ? (
+            <ActivityIndicator color={colors.text} />
+          ) : (
+            <Text
+              style={[
+                styles.ghostBtnText,
+                variant === 'danger' && { color: colors.danger },
+              ]}>
+              {title}
+            </Text>
+          )}
+        </Pressable>
+      </Animated.View>
     );
   }
   return (
-    <TouchableOpacity onPress={onPress} disabled={off} style={off && { opacity: 0.5 }}>
-      <LinearGradient
-        colors={variant === 'gold' ? [...gradients.gold] : [...gradients.button]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.btn, shadowGlow]}>
-        {loading ? (
-          <ActivityIndicator color={colors.white} />
-        ) : (
-          <Text style={styles.btnText}>{title}</Text>
-        )}
-      </LinearGradient>
-    </TouchableOpacity>
+    <Animated.View style={{ transform: [{ scale }], opacity: off ? 0.5 : 1 }}>
+      <Pressable onPress={onPress} onPressIn={pressIn} onPressOut={pressOut} disabled={off}>
+        <LinearGradient
+          colors={variant === 'gold' ? [...gradients.gold] : [...gradients.button]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.btn, variant === 'gold' ? shadowGlowSoft : shadowGlow]}>
+          <LinearGradient
+            colors={[...gradients.glassSheen]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={styles.btnSheen}
+            pointerEvents="none"
+          />
+          {content}
+        </LinearGradient>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -101,12 +220,19 @@ export function NeonInput({
   error,
   ...props
 }: TextInputProps & { label?: string; error?: string }) {
+  const [focused, setFocused] = useState(false);
   return (
     <View style={{ marginBottom: spacing.md }}>
       {label ? <Text style={styles.label}>{label}</Text> : null}
       <TextInput
         placeholderTextColor={colors.faint}
-        style={[styles.input, error ? { borderColor: colors.danger } : null]}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        style={[
+          styles.input,
+          focused && styles.inputFocused,
+          error ? { borderColor: colors.danger } : null,
+        ]}
         {...props}
       />
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -121,7 +247,19 @@ export function GlowCard({
   children: React.ReactNode;
   style?: ViewStyle;
 }) {
-  return <View style={[styles.card, style]}>{children}</View>;
+  return (
+    <View style={[styles.card, style]}>
+      <BlurView intensity={32} tint="dark" style={StyleSheet.absoluteFill} />
+      <LinearGradient
+        colors={[...gradients.glassSheen]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={styles.cardSheen}
+        pointerEvents="none"
+      />
+      <View style={{ position: 'relative' }}>{children}</View>
+    </View>
+  );
 }
 
 export function ToggleRow({
@@ -163,39 +301,61 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing.lg },
   glowTop: {
     position: 'absolute',
-    top: -120,
-    start: -80,
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    backgroundColor: 'rgba(124,58,237,0.20)',
+    top: -140,
+    start: -100,
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: 'rgba(124,58,237,0.28)',
+  },
+  glowMid: {
+    position: 'absolute',
+    top: '42%',
+    end: -140,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: 'rgba(34,211,238,0.10)',
   },
   glowBottom: {
     position: 'absolute',
-    bottom: -140,
-    end: -90,
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: 'rgba(217,70,239,0.12)',
+    bottom: -160,
+    start: -60,
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: 'rgba(217,70,239,0.18)',
   },
   logo: {
     color: colors.text,
     fontWeight: fonts.weights.black,
     letterSpacing: 3,
   },
+  logoAccent: {
+    color: colors.accent,
+    ...textGlow,
+  },
   logoLine: {
     marginTop: 6,
     width: 64,
     height: 3,
     borderRadius: 2,
-    backgroundColor: colors.accent,
   },
   btn: {
     borderRadius: radius.md,
     paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  btnSheen: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '55%',
+    borderTopLeftRadius: radius.md,
+    borderTopRightRadius: radius.md,
   },
   btnText: {
     color: colors.white,
@@ -207,8 +367,8 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: colors.stroke,
-    backgroundColor: colors.card,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.glass,
   },
   ghostBtnText: {
     color: colors.text,
@@ -222,9 +382,9 @@ const styles = StyleSheet.create({
     textAlign: 'left',
   },
   input: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.glass,
     borderWidth: 1,
-    borderColor: colors.stroke,
+    borderColor: colors.glassBorder,
     borderRadius: radius.md,
     color: colors.text,
     fontSize: fonts.sizes.md,
@@ -232,13 +392,26 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     textAlign: 'left',
   },
+  inputFocused: {
+    borderColor: colors.accent,
+    backgroundColor: colors.glassStrong,
+    ...shadowGlowSoft,
+  },
   errorText: { color: colors.danger, fontSize: fonts.sizes.xs, marginTop: 4 },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.glass,
     borderWidth: 1,
-    borderColor: colors.stroke,
+    borderColor: colors.glassBorder,
     borderRadius: radius.lg,
     padding: spacing.lg,
+    overflow: 'hidden',
+  },
+  cardSheen: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 48,
   },
   toggleRow: {
     flexDirection: 'row',
@@ -252,11 +425,11 @@ const styles = StyleSheet.create({
   toggleDesc: { color: colors.muted, fontSize: fonts.sizes.sm, marginTop: 2 },
   chip: {
     borderWidth: 1,
-    borderColor: colors.stroke,
+    borderColor: colors.glassBorder,
     borderRadius: radius.full,
     paddingHorizontal: 10,
     paddingVertical: 3,
-    backgroundColor: colors.card,
+    backgroundColor: colors.glass,
   },
   chipText: { color: colors.primaryBright, fontSize: fonts.sizes.xs, fontWeight: fonts.weights.bold },
 });
