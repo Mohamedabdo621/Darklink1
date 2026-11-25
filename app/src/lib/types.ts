@@ -14,6 +14,9 @@ export interface Profile {
   discoverable: boolean;
   share_photo: boolean;
   share_info: boolean;
+  show_last_seen: boolean;
+  interests: string[];
+  last_seen_at: string | null;
   is_vip: boolean;
   vip_until: string | null;
   language: Language;
@@ -30,6 +33,8 @@ export interface PublicProfile {
   bio: string | null;
   identity_mode: IdentityMode;
   is_vip: boolean;
+  interests?: string[];
+  last_seen_at?: string | null;
   created_at: string;
 }
 

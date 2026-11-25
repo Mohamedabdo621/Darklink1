@@ -10,6 +10,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Profile } from '../lib/types';
 import { fetchMyProfile } from '../services/profile';
+import { registerPushToken, unregisterPushToken } from '../services/push';
 
 interface AuthState {
   session: Session | null;
@@ -42,6 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     setProfile(await fetchMyProfile(userId));
+    registerPushToken(userId);
   }, []);
 
   useEffect(() => {
@@ -67,7 +69,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (userIdRef.current) setProfile(await fetchMyProfile(userIdRef.current));
   }, []);
 
+  // نبض الحضور: تحديث آخر ظهور دوريًا أثناء استخدام التطبيق
+  useEffect(() => {
+    if (!profile?.id) return;
+    const uid = profile.id;
+    const beat = () => {
+      supabase
+        .from('profiles')
+        .update({ last_seen_at: new Date().toISOString() })
+        .eq('id', uid)
+        .then(() => {});
+    };
+    beat();
+    const iv = setInterval(beat, 45000);
+    return () => clearInterval(iv);
+  }, [profile?.id]);
+
   const signOut = useCallback(async () => {
+    if (userIdRef.current) await unregisterPushToken(userIdRef.current);
     await supabase.auth.signOut();
     setProfile(null);
     setSession(null);

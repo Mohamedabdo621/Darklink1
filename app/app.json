@@ -50,7 +50,9 @@
         }
       ],
       "expo-status-bar",
-      "expo-localization"
+      "expo-localization",
+      "expo-video",
+      "expo-notifications"
     ],
     "scheme": "darklink",
     "slug": "darklink",

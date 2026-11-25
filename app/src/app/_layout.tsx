@@ -7,6 +7,7 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import AppDialog from '../components/AppDialog';
 import { initI18n } from '../i18n';
 import { AuthProvider } from '../contexts/AuthContext';
+import { setupNotificationHandler } from '../services/push';
 import { colors } from '../theme';
 
 export default function RootLayout() {
@@ -14,6 +15,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     initI18n().finally(() => setReady(true));
+    setupNotificationHandler();
   }, []);
 
   if (!ready) {
