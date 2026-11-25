@@ -18,6 +18,7 @@
       "googleServicesFile": "./google-services.json"
     },
     "experiments": {
+      "baseUrl": "/Darklink1",
       "typedRoutes": true
     },
     "extra": {
