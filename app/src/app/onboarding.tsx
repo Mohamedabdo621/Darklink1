@@ -40,7 +40,13 @@ export default function Onboarding() {
 
   const next = () => {
     if (page < slides.length - 1) {
-      listRef.current?.scrollToIndex({ index: page + 1 });
+      // On web, programmatic scrolling does not reliably fire
+      // onMomentumScrollEnd, so update the page state directly —
+      // otherwise the button appears dead and every tap re-targets
+      // the same slide.
+      const nextPage = page + 1;
+      setPage(nextPage);
+      listRef.current?.scrollToIndex({ index: nextPage, animated: true });
     } else {
       finish();
     }
@@ -79,6 +85,11 @@ export default function Onboarding() {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         keyExtractor={(_, i) => String(i)}
+        getItemLayout={(_, index) => ({
+          length: width - spacing.lg * 2,
+          offset: (width - spacing.lg * 2) * index,
+          index,
+        })}
         onMomentumScrollEnd={(e) =>
           setPage(Math.round(e.nativeEvent.contentOffset.x / width))
         }
