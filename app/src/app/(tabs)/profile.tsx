@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import { TabSwipe } from '../../components/TabSwipe';
 import { useTranslation } from 'react-i18next';
 import { Chip, GlowCard, NeonButton, Screen } from '../../components/ui';
 import { useAuth } from '../../contexts/AuthContext';
@@ -54,7 +55,8 @@ export default function ProfileTab() {
   if (!profile) return <Screen>{null}</Screen>;
 
   return (
-    <Screen>
+    <TabSwipe current="profile">
+      <Screen>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={{ alignItems: 'center', marginTop: spacing.lg }}>
           {avatar ? (
@@ -211,6 +213,7 @@ export default function ProfileTab() {
         </View>
       </ScrollView>
     </Screen>
+    </TabSwipe>
   );
 }
 

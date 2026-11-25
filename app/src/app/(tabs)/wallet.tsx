@@ -10,6 +10,7 @@ import {
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { GlowCard, Screen } from '../../components/ui';
+import { TabSwipe } from '../../components/TabSwipe';
 import { useAuth } from '../../contexts/AuthContext';
 import { appAlert } from '../../lib/dialog';
 import type { Transaction } from '../../lib/types';
@@ -97,7 +98,8 @@ export default function WalletTab() {
   };
 
   return (
-    <Screen>
+    <TabSwipe current="wallet">
+      <Screen>
       <Text style={styles.title}>{t('wallet.title')}</Text>
 
       <GlowCard style={styles.balanceCard}>
@@ -179,6 +181,7 @@ export default function WalletTab() {
         )}
       />
     </Screen>
+    </TabSwipe>
   );
 }
 

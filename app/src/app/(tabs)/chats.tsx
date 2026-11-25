@@ -11,6 +11,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { Screen } from '../../components/ui';
+import { TabSwipe } from '../../components/TabSwipe';
 import { useAuth } from '../../contexts/AuthContext';
 import { appAlert } from '../../lib/dialog';
 import { supabase } from '../../lib/supabase';
@@ -213,7 +214,8 @@ export default function Chats() {
   );
 
   return (
-    <Screen>
+    <TabSwipe current="chats">
+      <Screen>
       <Text style={styles.title}>{t('chats.title')}</Text>
       <FlatList
         data={rows}
@@ -268,6 +270,7 @@ export default function Chats() {
         )}
       />
     </Screen>
+    </TabSwipe>
   );
 }
 

@@ -12,6 +12,7 @@ import {
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Chip, NeonInput, Screen } from '../../components/ui';
+import { TabSwipe } from '../../components/TabSwipe';
 import { INTEREST_KEYS } from '../../lib/interests';
 import type { PublicProfile } from '../../lib/types';
 import { avatarSignedUrl } from '../../services/profile';
@@ -77,7 +78,8 @@ export default function Discover() {
   };
 
   return (
-    <Screen>
+    <TabSwipe current="discover">
+      <Screen>
       <Text style={styles.title}>{t('discover.title')}</Text>
       <NeonInput
         value={search}
@@ -137,6 +139,7 @@ export default function Discover() {
         renderItem={({ item }) => <DiscoverCard item={item} />}
       />
     </Screen>
+    </TabSwipe>
   );
 }
 

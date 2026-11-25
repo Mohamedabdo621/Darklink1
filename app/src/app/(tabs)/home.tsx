@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import { TabSwipe } from '../../components/TabSwipe';
 import { useTranslation } from 'react-i18next';
 import { Chip, GlowCard, Logo, NeonButton, Screen } from '../../components/ui';
 import { useAuth } from '../../contexts/AuthContext';
@@ -105,7 +106,8 @@ export default function Home() {
   const name = shownNameOf(profile);
 
   return (
-    <Screen>
+    <TabSwipe current="home">
+      <Screen>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={{ width: 40 }} />
@@ -284,6 +286,7 @@ export default function Home() {
         </View>
       </ScrollView>
     </Screen>
+    </TabSwipe>
   );
 }
 
