@@ -3,7 +3,7 @@ import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Logo, NeonButton, NeonInput, Screen } from '../../components/ui';
-import { isSupabaseConfigured, runConnectionDiagnostic } from '../../lib/supabase';
+import { isSupabaseConfigured } from '../../lib/supabase';
 import { isValidEmail, signIn } from '../../services/auth';
 import { colors, fonts, spacing } from '../../theme';
 
@@ -13,18 +13,6 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [emailErr, setEmailErr] = useState('');
-  const [diag, setDiag] = useState('');
-  const [diagBusy, setDiagBusy] = useState(false);
-
-  const runDiag = async () => {
-    setDiagBusy(true);
-    try {
-      setDiag(await runConnectionDiagnostic());
-    } catch (e) {
-      setDiag(e instanceof Error ? `${e.name}: ${e.message}` : String(e));
-    }
-    setDiagBusy(false);
-  };
 
   const submit = async () => {
     if (!isSupabaseConfigured) {
@@ -95,19 +83,6 @@ ${res.raw}` : t(res.errorKey));
             </Text>
           </TouchableOpacity>
         </View>
-
-        <TouchableOpacity onPress={runDiag} style={{ alignSelf: 'center', marginTop: spacing.xl }}>
-          <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
-            {diagBusy ? '...جاري الفحص' : 'فحص الاتصال'}
-          </Text>
-        </TouchableOpacity>
-        {diag ? (
-          <View style={styles.diagBox}>
-            <Text selectable style={styles.diagText}>
-              {diag}
-            </Text>
-          </View>
-        ) : null}
       </ScrollView>
     </Screen>
   );
@@ -125,13 +100,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: spacing.xl,
   },
-  diagBox: {
-    marginTop: spacing.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: 8,
-    backgroundColor: colors.surface,
-  },
-  diagText: { color: colors.text, fontSize: fonts.sizes.sm, textAlign: 'left' },
 });

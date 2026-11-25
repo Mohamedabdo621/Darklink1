@@ -23,7 +23,7 @@
       "eas": {
         "projectId": "7f71e285-fcbd-4d64-9117-4871ac944c71"
       },
-      "supabaseAnonKey": "sb_publishable_L-24L3CiqVjAFBF5oy9X7g_NjdoVpzP",
+      "supabaseAnonKey": "sb_publishable_XQIugK-XYjkzIl6Jwu01kQ_drLj8i4y",
       "supabaseUrl": "https://hffnmnhyjowaqbkgnnnl.supabase.co"
     },
     "icon": "./assets/icon.png",
@@ -60,7 +60,7 @@
       "resizeMode": "contain"
     },
     "userInterfaceStyle": "dark",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "web": {
       "favicon": "./assets/favicon.png"
     },
