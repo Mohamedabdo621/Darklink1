@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { appAlert } from '../lib/dialog';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -8,12 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { giftEmoji, giftImage } from '../lib/giftAssets';
 import type { GemPackage, Gift } from '../lib/types';
 import { activateVipTier } from '../services/economy';
-import {
-  fetchGiftsCatalog,
-  fetchPackages,
-  fetchWallet,
-  purchasePackage,
-} from '../services/wallet';
+import { fetchGiftsCatalog, fetchPackages, fetchWallet } from '../services/wallet';
 import { colors, fonts, radius, spacing } from '../theme';
 
 const VIP_SILVER_PRICE = 500;
@@ -54,28 +49,18 @@ export default function Store() {
 
   if (!me) return <Screen>{null}</Screen>;
 
+  // الشراء يدوي فقط حالياً: زر "شراء" يفتح شاشة التحويل اليدوي
+  // (فودافون/اتصالات كاش) — لا جواهر فورية. الشراء عبر Google Play
+  // سيُفعّل لاحقاً عند النشر على المتجر (purchasePackage يبقى جاهزاً).
   const buy = (pkg: GemPackage) => {
-    appAlert(
-      t('store.title'),
-      t('store.confirmBuy', { gems: pkg.gems, price: pkg.price_egp }),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('store.buy'),
-          onPress: async () => {
-            setBusyId(pkg.id);
-            const res = await purchasePackage(pkg);
-            setBusyId(null);
-            if (res.ok) {
-              if (res.balance !== undefined) setBalance(res.balance);
-              appAlert('✓', t('store.buySuccess'));
-            } else {
-              appAlert(t('common.error'), t('store.buyFailed'));
-            }
-          },
-        },
-      ],
-    );
+    router.push({
+      pathname: '/manual-pay',
+      params: {
+        packageId: pkg.id,
+        gems: String(pkg.gems),
+        price: String(pkg.price_egp),
+      },
+    });
   };
 
   const buyVipTier = (tier: 'silver' | 'gold') => {
@@ -111,7 +96,7 @@ export default function Store() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>{t('store.title')}</Text>
         <Text style={{ color: colors.muted, marginBottom: spacing.md }}>
-          💎 {balance} {t('common.gems')} • 🧪 {t('wallet.sandboxBadge')}
+          💎 {balance} {t('common.gems')}
         </Text>
 
         <Text style={styles.section}>{t('store.packages')}</Text>
@@ -131,19 +116,6 @@ export default function Store() {
                 loading={busyId === pkg.id}
                 onPress={() => buy(pkg)}
               />
-              <TouchableOpacity
-                onPress={() =>
-                  router.push({
-                    pathname: '/manual-pay',
-                    params: {
-                      packageId: pkg.id,
-                      gems: String(pkg.gems),
-                      price: String(pkg.price_egp),
-                    },
-                  })
-                }>
-                <Text style={styles.manualLink}>💳 {t('store.manualPay')}</Text>
-              </TouchableOpacity>
             </GlowCard>
           ))}
         </View>
@@ -246,10 +218,4 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   giftImg: { width: 62, height: 62, borderRadius: radius.md },
-  manualLink: {
-    color: colors.primaryBright,
-    fontSize: fonts.sizes.sm,
-    fontWeight: '700',
-    marginTop: spacing.sm,
-  },
 });
