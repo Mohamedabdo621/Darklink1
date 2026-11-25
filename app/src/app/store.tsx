@@ -1,9 +1,10 @@
 import React, { useCallback, useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { appAlert } from '../lib/dialog';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { GlowCard, NeonButton, Screen } from '../components/ui';
+import GiftAnimation from '../components/GiftAnimation';
 import { useAuth } from '../contexts/AuthContext';
 import { giftEmoji, giftImage } from '../lib/giftAssets';
 import type { GemPackage, Gift } from '../lib/types';
@@ -21,6 +22,7 @@ export default function Store() {
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [balance, setBalance] = useState(0);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [previewGift, setPreviewGift] = useState<Gift | null>(null);
 
   const load = useCallback(async () => {
     if (!me) return;
@@ -167,7 +169,11 @@ export default function Store() {
         <Text style={styles.section}>{t('store.giftsCatalog')}</Text>
         <View style={styles.grid}>
           {gifts.map((g) => (
-            <View key={g.id} style={styles.giftItem}>
+            <TouchableOpacity
+              key={g.id}
+              style={styles.giftItem}
+              activeOpacity={0.85}
+              onPress={() => setPreviewGift(g)}>
               {giftImage(g.asset) ? (
                 <Image source={giftImage(g.asset)} style={styles.giftImg} />
               ) : giftEmoji(g.asset) ? (
@@ -179,9 +185,16 @@ export default function Store() {
               <Text style={{ color: colors.primaryBright, fontSize: fonts.sizes.xs }}>
                 {g.price_gems} 💎
               </Text>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
+        <GiftAnimation
+          visible={!!previewGift}
+          giftNameKey={previewGift?.name_key ?? null}
+          giftLabel={previewGift ? t(`gifts.${previewGift.name_key}`) : undefined}
+          title={t('giftAnimation.preview')}
+          onClose={() => setPreviewGift(null)}
+        />
         <View style={{ height: spacing.xxl }} />
       </ScrollView>
     </Screen>

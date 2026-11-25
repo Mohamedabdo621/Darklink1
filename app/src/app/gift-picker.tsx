@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Animated, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, Image, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { appAlert } from '../lib/dialog';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Screen } from '../components/ui';
+import GiftAnimation from '../components/GiftAnimation';
 import { useAuth } from '../contexts/AuthContext';
 import { giftEmoji, giftImage } from '../lib/giftAssets';
 import type { Gift } from '../lib/types';
@@ -18,7 +19,6 @@ export default function GiftPicker() {
   const [balance, setBalance] = useState(0);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [sentGift, setSentGift] = useState<Gift | null>(null);
-  const [scale] = useState(() => new Animated.Value(0));
 
   const load = useCallback(async () => {
     if (!me) return;
@@ -39,14 +39,6 @@ export default function GiftPicker() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
-
-  useEffect(() => {
-    if (sentGift) {
-      Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 4 }).start();
-      const id = setTimeout(() => router.back(), 1600);
-      return () => clearTimeout(id);
-    }
-  }, [sentGift, scale]);
 
   if (!me || !userId) return <Screen>{null}</Screen>;
 
@@ -87,16 +79,13 @@ export default function GiftPicker() {
   if (sentGift) {
     return (
       <Screen>
-        <View style={styles.sentWrap}>
-          <Animated.View style={{ transform: [{ scale }] }}>
-            {giftImage(sentGift.asset) ? (
-              <Image source={giftImage(sentGift.asset)} style={styles.sentImg} />
-            ) : (
-              <Text style={{ fontSize: 90 }}>{giftEmoji(sentGift.asset) ?? '🎁'}</Text>
-            )}
-          </Animated.View>
-          <Text style={styles.sentText}>{t('giftPicker.sent')}</Text>
-        </View>
+        <GiftAnimation
+          visible
+          giftNameKey={sentGift.name_key}
+          giftLabel={t(`gifts.${sentGift.name_key}`)}
+          title={t('giftPicker.sent')}
+          onClose={() => router.back()}
+        />
       </Screen>
     );
   }
@@ -162,7 +151,4 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   img: { width: 64, height: 64, borderRadius: radius.md },
-  sentWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg },
-  sentImg: { width: 170, height: 170, borderRadius: radius.xl },
-  sentText: { color: colors.text, fontSize: fonts.sizes.xl, fontWeight: fonts.weights.bold },
 });

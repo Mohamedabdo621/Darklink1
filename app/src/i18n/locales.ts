@@ -509,6 +509,13 @@ export const ar = {
     lantern: 'فانوس',
     fireworks: 'ألعاب نارية',
   },
+  giftAnimation: {
+    sent: 'بعت الهدية! 🎁',
+    received: 'استلمت هدية! 🎁',
+    replay: 'إعادة تشغيل الهدية',
+    preview: 'معاينة الهدية',
+    tapToClose: 'دوس في أي مكان عشان تقفل',
+  },
   packages: {
     starter: 'البداية',
     popular: 'الأشهر',
@@ -1027,6 +1034,13 @@ export const en: typeof ar = {
     treasure_chest: 'Treasure Chest',
     lantern: 'Lantern',
     fireworks: 'Fireworks',
+  },
+  giftAnimation: {
+    sent: 'Gift sent! 🎁',
+    received: 'You got a gift! 🎁',
+    replay: 'Replay gift',
+    preview: 'Gift preview',
+    tapToClose: 'Tap anywhere to close',
   },
   packages: {
     starter: 'Starter',

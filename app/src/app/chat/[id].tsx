@@ -15,6 +15,7 @@ import * as Haptics from 'expo-haptics';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import VoiceBubble from '../../components/VoiceBubble';
+import GiftAnimation from '../../components/GiftAnimation';
 import { useAuth } from '../../contexts/AuthContext';
 import { giftImage } from '../../lib/giftAssets';
 import { supabase } from '../../lib/supabase';
@@ -55,6 +56,7 @@ export default function ChatScreen() {
   const [otherAvatar, setOtherAvatar] = useState<string | null>(null);
   const [otherId, setOtherId] = useState<string | null>(null);
   const [giftMap, setGiftMap] = useState<Record<string, GiftInfo>>({});
+  const [animGift, setAnimGift] = useState<{ nameKey: string; title: string } | null>(null);
   const [text, setText] = useState('');
   const [blockedByMe, setBlockedByMe] = useState(false);
   const [sending, setSending] = useState(false);
@@ -81,12 +83,12 @@ export default function ChatScreen() {
 
   const loadGiftInfo = useCallback(async (msgs: Message[]) => {
     const ids = msgs.map((m) => m.gift_send_id).filter(Boolean) as string[];
-    if (!ids.length) return;
+    if (!ids.length) return {};
     const { data } = await supabase
       .from('gift_sends')
       .select('id, gift:gifts(name_key, asset)')
       .in('id', ids);
-    if (!data) return;
+    if (!data) return {};
     const map: Record<string, GiftInfo> = {};
     for (const row of data as unknown as {
       id: string;
@@ -95,6 +97,7 @@ export default function ChatScreen() {
       if (row.gift) map[row.id] = row.gift;
     }
     setGiftMap((prev) => ({ ...prev, ...map }));
+    return map;
   }, []);
 
   const load = useCallback(async () => {
@@ -177,7 +180,15 @@ export default function ChatScreen() {
             return prev.map((m) => (m.id === row.id ? (payload.new as Message) : m));
           });
           if (payload.eventType === 'INSERT') {
-            loadGiftInfo([row]);
+            // هدية جديدة من الطرف الآخر وهو فاتح الشات: شغّل الأنيميشن فوراً
+            loadGiftInfo([row]).then((map) => {
+              if (row.type === 'gift' && row.sender_id !== me.id && row.gift_send_id) {
+                const info = map[row.gift_send_id];
+                if (info) {
+                  setAnimGift({ nameKey: info.name_key, title: t('giftAnimation.received') });
+                }
+              }
+            });
             if (row.sender_id !== me.id) markConversationRead(conversationId);
             if (row.reply_to_id) {
               fetchReplyPreview(row.reply_to_id).then((p) => {
@@ -211,7 +222,7 @@ export default function ChatScreen() {
       supabase.removeChannel(rChannel);
       channelRef.current = null;
     };
-  }, [conversationId, me, loadGiftInfo]);
+  }, [conversationId, me, loadGiftInfo, t]);
 
   if (!me || !conversationId) return <View style={styles.root} />;
 
@@ -507,6 +518,9 @@ export default function ChatScreen() {
               replySnippet={item.reply_preview ? snippetFor(item.reply_preview) : undefined}
               reactions={reactions[item.id] ?? []}
               onReactPress={(emoji) => onReact(item, emoji)}
+              onGiftPress={(g) =>
+                setAnimGift({ nameKey: g.name_key, title: t('giftAnimation.replay') })
+              }
               onMediaPress={(url, kind) =>
                 router.push({
                   pathname: '/media-viewer',
@@ -700,6 +714,14 @@ export default function ChatScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <GiftAnimation
+        visible={!!animGift}
+        giftNameKey={animGift?.nameKey ?? null}
+        giftLabel={animGift ? t(`gifts.${animGift.nameKey}`) : undefined}
+        title={animGift?.title}
+        onClose={() => setAnimGift(null)}
+      />
     </View>
   );
 }
@@ -712,6 +734,7 @@ function MessageBubble({
   replySnippet,
   reactions,
   onReactPress,
+  onGiftPress,
   onMediaPress,
   onLongPress,
 }: {
@@ -722,6 +745,7 @@ function MessageBubble({
   replySnippet?: string;
   reactions: { emoji: string; count: number; mine: boolean }[];
   onReactPress: (emoji: string) => void;
+  onGiftPress?: (gift: GiftInfo) => void;
   onMediaPress: (url: string, kind: 'image' | 'video') => void;
   onLongPress: () => void;
 }) {
@@ -782,16 +806,18 @@ function MessageBubble({
         ) : m.type === 'voice' ? (
           <VoiceBubble mediaPath={m.media_path} durationSec={m.voice_duration} mine={mine} />
         ) : m.type === 'gift' ? (
-          <View style={{ alignItems: 'center', gap: 4 }}>
-            {gift && giftImage(gift.asset) ? (
-              <Image source={giftImage(gift.asset)} style={styles.giftImg} />
-            ) : (
-              <Text style={{ fontSize: 40 }}>🎁</Text>
-            )}
-            <Text style={[styles.msgText, mine && { color: colors.white }]}>
-              {gift ? t(`gifts.${gift.name_key}`) : t('chats.gift')}
-            </Text>
-          </View>
+          <TouchableOpacity activeOpacity={0.85} onPress={() => gift && onGiftPress?.(gift)}>
+            <View style={{ alignItems: 'center', gap: 4 }}>
+              {gift && giftImage(gift.asset) ? (
+                <Image source={giftImage(gift.asset)} style={styles.giftImg} />
+              ) : (
+                <Text style={{ fontSize: 40 }}>🎁</Text>
+              )}
+              <Text style={[styles.msgText, mine && { color: colors.white }]}>
+                {gift ? t(`gifts.${gift.name_key}`) : t('chats.gift')}
+              </Text>
+            </View>
+          </TouchableOpacity>
         ) : null}
         {reactions.length ? (
           <View style={styles.reactionRow}>
