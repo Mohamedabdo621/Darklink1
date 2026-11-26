@@ -153,8 +153,13 @@ export default function ChatScreen() {
 
   useEffect(() => {
     if (!conversationId || !me) return;
+    // معرّف فريد لكل اشتراك: supabase.channel() بيرجع نفس القناة لو الاسم
+    // متسجّل ولسه مشترك، وإضافة postgres_changes بعد الاشتراك بتضرب خطأ
+    // «cannot add postgres_changes callbacks ... after subscribe()».
+    // اسم جديد في كل مرة يخلي إعادة التشغيل أو إعادة فتح الشات آمنة.
+    const suffix = Math.random().toString(36).slice(2, 8);
     const channel = supabase
-      .channel(`chat-${conversationId}`)
+      .channel(`chat-${conversationId}-${suffix}`)
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         if (payload?.from && payload.from !== me.id) {
           setTyping(true);
@@ -205,7 +210,7 @@ export default function ChatScreen() {
       .subscribe();
     channelRef.current = channel;
     const rChannel = supabase
-      .channel(`reactions-${conversationId}`)
+      .channel(`reactions-${conversationId}-${suffix}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'message_reactions' },

@@ -35,8 +35,9 @@ export default function Notifications() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
     if (!me) return;
+    // اسم فريد لكل اشتراك — نفس سبب الإصلاح في شاشة الشات
     const channel = supabase
-      .channel('notifications-live')
+      .channel(`notifications-live-${Math.random().toString(36).slice(2, 8)}`)
       .on(
         'postgres_changes',
         {

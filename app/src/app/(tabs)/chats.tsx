@@ -106,8 +106,10 @@ export default function Chats() {
 
   useEffect(() => {
     if (!me) return;
+    // اسم فريد لكل اشتراك — نفس سبب الإصلاح في شاشة الشات (قناة بنفس الاسم
+    // ولسه مشتركة بتضرب خطأ عند إعادة الاشتراك)
     const channel = supabase
-      .channel('chats-list')
+      .channel(`chats-list-${Math.random().toString(36).slice(2, 8)}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
