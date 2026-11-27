@@ -1,14 +1,16 @@
 import React, { useEffect, useState, useSyncExternalStore, useMemo } from 'react';
 import {
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  type ViewStyle,
 } from 'react-native';
-import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
+import Animated, { FadeIn, SlideInDown, ZoomIn } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
 import {
@@ -62,11 +64,13 @@ export default function AppDialog() {
 
   return (
     <Modal transparent visible animationType="fade" onRequestClose={dismiss}>
-      <Pressable style={styles.backdrop} onPress={dismiss}>
+      <Pressable
+        style={[styles.backdrop, isSheet && styles.backdropSheet]}
+        onPress={dismiss}>
         <Animated.View entering={FadeIn.duration(140)} style={styles.center}>
           <Pressable onPress={() => {}}>
             <Animated.View
-              entering={ZoomIn.duration(180)}
+              entering={isSheet ? SlideInDown.duration(220) : ZoomIn.duration(180)}
               style={[styles.card, shadowGlow]}>
               {dialog.title ? <Text style={styles.title}>{dialog.title}</Text> : null}
               {dialog.message ? (
@@ -179,6 +183,23 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.lg,
+    // على الويب: ثبّت الخلفية على الشاشة نفسها — من غيره حاوية الـ Modal
+    // بتتمدد بطول الصفحة والكارت بينزل تحت (كان بيظهر خارج الشاشة)
+    // 'fixed' مش في أنواع RN فبتتكتب بتحويل — شغالة على الويب بس
+    ...(Platform.OS === 'web'
+      ? ({
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+        } as unknown as ViewStyle)
+      : null),
+  },
+  /** قايمة الأكشنات (>2 زرار) بتنزل شيت من تحت — ثابتة على حافة الشاشة
+   *  فمستحيل تظهر برّه، وده النمط الطبيعي للقوايم على الموبايل */
+  backdropSheet: {
+    justifyContent: 'flex-end',
   },
   center: { width: '100%', maxWidth: 420 },
   card: {
