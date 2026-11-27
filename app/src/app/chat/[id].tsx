@@ -2691,6 +2691,10 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorderStrong,
     borderBottomStartRadius: 6,
+    // الرسالة الطويلة كانت بتفضل سطر واحد أعرض من الشاشة وبتتقصّ
+    // (الأفاتار جنبها في صف، والفقاعة مبتتقلصش) — flexShrink بيخليها
+    // تاخد العرض المتاح والنص يلف على كذا سطر
+    flexShrink: 1,
   },
   /** وميض النطّ للرسالة الأصلية: حد ذهبي سميك مؤقت (باين على الفقاعتين) */
   bubbleHighlight: {
