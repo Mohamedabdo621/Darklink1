@@ -1293,14 +1293,16 @@ export default function ChatScreen() {
 
   return (
     <View style={styles.root}>
-      {/* خلفية الشات: صورة أليكس نفسها (غامق/فاتح حسب الوضع) — ثابتة ورا كل حاجة */}
+      {/* خلفية الشات: صورة أليكس نفسها (غامق/فاتح حسب الوضع) — ثابتة ورا كل حاجة.
+          العرض/الطول 100% صريحين لأن React Native Web من غيرهم بياخد مقاس
+          الصورة الأصلي (941×1672) فبتتقص على الموبايل وبتقف عند نص الشاشة على الديسكتوب */}
       <Image
         source={
           resolved === 'light'
             ? require('../../assets/chat-bg-light.jpg')
             : require('../../assets/chat-bg-dark.jpg')
         }
-        style={StyleSheet.absoluteFill}
+        style={[StyleSheet.absoluteFill, { width: '100%', height: '100%' }]}
         resizeMode="cover"
       />
       {/* الترويسة — شريط زجاجي عائم زي الصورة المرجعية؛
@@ -1309,6 +1311,7 @@ export default function ChatScreen() {
         <BlurView
           intensity={resolved === 'light' ? 20 : 32}
           tint={resolved === 'light' ? 'light' : 'dark'}
+          pointerEvents="none"
           style={[StyleSheet.absoluteFill, { borderRadius: radius.full }]}
         />
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -1473,6 +1476,7 @@ export default function ChatScreen() {
               <BlurView
                 intensity={resolved === 'light' ? 20 : 32}
                 tint={resolved === 'light' ? 'light' : 'dark'}
+                pointerEvents="none"
                 style={[StyleSheet.absoluteFill, { borderRadius: radius.full }]}
               />
               <GlassIconButton
@@ -1556,6 +1560,7 @@ export default function ChatScreen() {
               <BlurView
                 intensity={resolved === 'light' ? 20 : 32}
                 tint={resolved === 'light' ? 'light' : 'dark'}
+                pointerEvents="none"
                 style={[StyleSheet.absoluteFill, { borderRadius: radius.full }]}
               />
               {phase === 'recording' ? (
@@ -1594,7 +1599,7 @@ export default function ChatScreen() {
                     value={editing ? editText : text}
                     onChangeText={editing ? onTypeEdit : onType}
                     placeholder={editing ? t('chat.editHint') : t('chat.typeMessage')}
-                    placeholderTextColor={colors.faint}
+                    placeholderTextColor={colors.muted}
                     cursorColor={colors.primaryBright}
                     selectionColor={colors.primaryBright}
                     style={styles.input}
@@ -2340,7 +2345,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   msgText: { color: colors.text, fontSize: fonts.sizes.md, lineHeight: 22 },
   deleted: { color: colors.faint, fontStyle: 'italic', fontSize: fonts.sizes.sm },
-  time: { color: colors.faint, fontSize: 10, marginTop: 3, textAlign: 'right' },
+  time: { color: colors.muted, fontSize: 10, marginTop: 3, textAlign: 'right' },
   mediaImg: { width: 210, height: 210, borderRadius: radius.md },
   videoOverlay: {
     color: colors.white,

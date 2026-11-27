@@ -46,7 +46,7 @@ export default function VoiceBubble({
 
   const bars = useMemo(() => {
     const seed = (durationSec ?? 7) * 13;
-    return Array.from({ length: 28 }, (_, i) => {
+    return Array.from({ length: 20 }, (_, i) => {
       const v = Math.abs(Math.sin(seed + i * 1.7)) * 14 + 4;
       return v;
     });
@@ -109,7 +109,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    minWidth: 210,
+    minWidth: 170,
     paddingVertical: 2,
   },
   playBtn: {
