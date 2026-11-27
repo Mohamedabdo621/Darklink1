@@ -96,6 +96,12 @@ export default function Notifications() {
       if (kind === 'post_comment') {
         return t('notifications.postComment');
       }
+      if (kind === 'story_like') {
+        return t('notifications.storyLike');
+      }
+      if (kind === 'story_comment') {
+        return t('notifications.storyComment');
+      }
       if (kind === 'contest_win') {
         return t('notifications.contestWin', {
           amount: Number(n.payload.amount ?? 0),
@@ -142,6 +148,22 @@ export default function Notifications() {
       typeof pid === 'string'
     ) {
       router.push({ pathname: '/post/[id]', params: { id: pid } });
+    }
+    const authorId = n.payload.author_id;
+    if (
+      n.type === 'account' &&
+      typeof n.payload.kind === 'string' &&
+      (n.payload.kind === 'story_like' || n.payload.kind === 'story_comment') &&
+      typeof authorId === 'string'
+    ) {
+      const sid = n.payload.story_id;
+      router.push({
+        pathname: '/story-viewer',
+        params:
+          typeof sid === 'string'
+            ? { userId: authorId, storyId: sid }
+            : { userId: authorId },
+      });
     }
   };
 

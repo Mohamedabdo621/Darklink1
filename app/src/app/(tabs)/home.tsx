@@ -1,11 +1,11 @@
 import React, { useCallback, useState, useMemo } from 'react';
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { TabSwipe } from '../../components/TabSwipe';
 import { useTranslation } from 'react-i18next';
-import { Chip, GlowCard, GradientRing, Logo, NeonButton, Screen } from '../../components/ui';
-import { AvatarInitial } from '../../components/Avatar';
+import { Chip, GlowCard, Logo, NeonButton, Screen } from '../../components/ui';
+import { Avatar } from '../../components/Avatar';
 import PostCard from '../../components/PostCard';
 import { useAuth } from '../../contexts/AuthContext';
 import { appAlert } from '../../lib/dialog';
@@ -129,6 +129,8 @@ export default function Home() {
   if (!profile) return <Screen>{null}</Screen>;
 
   const name = shownNameOf(profile);
+  // مجموعتي أنا (لو عندي ستوريهات) — بتظهر أول واحد في الصف
+  const myGroup = storyGroups.find((g) => g.mine);
 
   return (
     <TabSwipe current="home">
@@ -157,22 +159,27 @@ export default function Home() {
           showsHorizontalScrollIndicator={false}
           style={{ marginBottom: spacing.md }}
           contentContainerStyle={{ gap: spacing.md, paddingVertical: 2 }}>
+          {/* "قصتي": لو عندي ستوريهات الدوس عليها يفتح الستوري بتاعي (وضع المالك)،
+              ولو مفيش يفتح إنشاء قصة جديدة — وعلامة + بتضيف قصة جديدة على طول */}
           <TouchableOpacity
             style={styles.storyItem}
-            onPress={() => router.push('/story-new')}>
+            onPress={() =>
+              myGroup
+                ? router.push({
+                    pathname: '/story-viewer',
+                    params: { userId: profile.id },
+                  })
+                : router.push('/story-new')
+            }>
             <View>
-              <GradientRing size={62}>
-                {avatar ? (
-                  <Image source={{ uri: avatar }} style={styles.storyAvatar} />
-                ) : (
-                  <AvatarInitial name={name} size={54} />
-                )}
-              </GradientRing>
-              <View style={styles.storyPlus}>
+              <Avatar uri={avatar} name={name} size={62} />
+              <TouchableOpacity
+                style={styles.storyPlus}
+                onPress={() => router.push('/story-new')}>
                 <Text style={{ color: colors.white, fontSize: 13, fontWeight: '700' }}>
                   +
                 </Text>
-              </View>
+              </TouchableOpacity>
             </View>
             <Text style={styles.storyLabel}>{t('home.yourStory')}</Text>
           </TouchableOpacity>
@@ -188,13 +195,7 @@ export default function Home() {
                     params: { userId: g.userId },
                   })
                 }>
-                <GradientRing size={62}>
-                  {g.avatar ? (
-                    <Image source={{ uri: g.avatar }} style={styles.storyAvatar} />
-                  ) : (
-                    <AvatarInitial name={g.user?.shown_name} size={54} />
-                  )}
-                </GradientRing>
+                <Avatar uri={g.avatar} name={g.user?.shown_name} size={62} />
                 <Text style={styles.storyLabel} numberOfLines={1}>
                   {g.user?.shown_name ?? '—'}
                 </Text>
@@ -204,13 +205,7 @@ export default function Home() {
 
         <GlowCard style={styles.identityCard}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-            <GradientRing size={62}>
-              {avatar ? (
-                <Image source={{ uri: avatar }} style={styles.avatar} />
-              ) : (
-                <AvatarInitial name={name} size={56} />
-              )}
-            </GradientRing>
+            <Avatar uri={avatar} name={name} size={62} />
             <View style={{ flex: 1 }}>
               <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
                 {t('home.welcome')}

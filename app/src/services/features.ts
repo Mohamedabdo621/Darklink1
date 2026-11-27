@@ -151,6 +151,82 @@ export async function storySignedUrl(path: string | null): Promise<string | null
   return data.signedUrl;
 }
 
+// ---------------- تفاعلات الستوري: مشاهدات + قلوب + تعليقات ----------------
+
+export interface StoryViewerRow {
+  user_id: string;
+  shown_name: string;
+  avatar_url: string | null;
+  is_vip: boolean;
+  viewed_at: string;
+}
+
+export interface StoryStats {
+  views: number;
+  likes: number;
+  comments: number;
+  viewers: StoryViewerRow[];
+}
+
+export interface StoryComment {
+  id: string;
+  story_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
+  shown_name: string;
+  avatar_url: string | null;
+  is_vip: boolean;
+}
+
+export async function recordStoryView(storyId: string): Promise<void> {
+  await supabase.rpc('record_story_view', { p_story: storyId });
+}
+
+export async function toggleStoryLike(
+  storyId: string,
+): Promise<{ liked: boolean; likes: number } | null> {
+  const { data, error } = await supabase.rpc('toggle_story_like', {
+    p_story: storyId,
+  });
+  if (error || !data) return null;
+  return data as { liked: boolean; likes: number };
+}
+
+export async function getStoryLikeState(
+  storyId: string,
+): Promise<{ liked: boolean; likes: number } | null> {
+  const { data, error } = await supabase.rpc('get_story_like_state', {
+    p_story: storyId,
+  });
+  if (error || !data) return null;
+  return data as { liked: boolean; likes: number };
+}
+
+export async function addStoryComment(storyId: string, body: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('add_story_comment', {
+    p_story: storyId,
+    p_body: body,
+  });
+  return !error && !!(data as { ok?: boolean } | null)?.ok;
+}
+
+export async function getStoryComments(storyId: string): Promise<StoryComment[]> {
+  const { data, error } = await supabase.rpc('get_story_comments', {
+    p_story: storyId,
+  });
+  if (error || !data) return [];
+  return data as StoryComment[];
+}
+
+export async function getStoryStats(storyId: string): Promise<StoryStats | null> {
+  const { data, error } = await supabase.rpc('get_story_stats', {
+    p_story: storyId,
+  });
+  if (error || !data) return null;
+  return data as StoryStats;
+}
+
 // ---------------- زوار البروفايل ----------------
 
 export async function recordProfileVisit(profileId: string): Promise<void> {

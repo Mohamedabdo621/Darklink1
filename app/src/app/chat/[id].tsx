@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Animated, FlatList, Image, Keyboard, Modal, PanResponder, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
 import { appAlert, appPrompt } from '../../lib/dialog';
 import {
@@ -68,6 +70,7 @@ interface GiftInfo {
 
 export default function ChatScreen() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t, i18n } = useTranslation();
   const { id: conversationId } = useLocalSearchParams<{ id: string }>();
@@ -107,12 +110,177 @@ export default function ChatScreen() {
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingSent = useRef(0);
 
-  // ---- التسجيل الصوتي
+  // ---- التسجيل الصوتي (ستايل واتساب: ضغط مطول، إفلات للإرسال،
+  // سحب لليسار للإلغاء، سحب لأعلى للقفل)
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recState = useAudioRecorderState(recorder, 250);
-  const [phase, setPhase] = useState<'idle' | 'recording' | 'preview'>('idle');
-  const [previewUri, setPreviewUri] = useState<string | null>(null);
-  const [previewDur, setPreviewDur] = useState(0);
+  const [phase, setPhase] = useState<'idle' | 'recording' | 'locked'>('idle');
+  const [recDrag, setRecDrag] = useState({ dx: 0, dy: 0 });
+
+  const failSend = () => appAlert(t('common.error'), t('chat.blockedNotice'));
+
+  /** يربط معاينة الرد بالرسالة المرسلة محليًا ويصفّي حالة الرد */
+  const attachReply = (m: Message): Message => {
+    if (!replyTo || m.reply_to_id !== replyTo.id) return m;
+    return {
+      ...m,
+      reply_preview: {
+        id: replyTo.id,
+        sender_id: replyTo.sender_id,
+        type: replyTo.type,
+        body: replyTo.body,
+        is_deleted: replyTo.is_deleted,
+      },
+    };
+  };
+
+  const startRecording = async () => {
+    if (recorder.isRecording) return;
+    const status = await AudioModule.requestRecordingPermissionsAsync();
+    if (!status.granted) {
+      appAlert(t('common.error'), t('chat.micDenied'));
+      return;
+    }
+    Keyboard.dismiss();
+    await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
+    await recorder.prepareToRecordAsync();
+    recorder.record();
+    setPhase('recording');
+  };
+
+  /** إرسال فويس — أوفلاين بيتخزن في القائمة ويترفع لما النت يرجع */
+  const sendRecording = async (uri: string, dur: number) => {
+    if (!me || !conversationId) return;
+    const replyId = replyTo?.id ?? null;
+    if (!online) {
+      const item = await enqueueOutbox({
+        conversationId,
+        senderId: me.id,
+        type: 'voice',
+        localUri: uri,
+        bucket: 'voice-notes',
+        durationSec: dur,
+        replyToId: replyId,
+      });
+      setPending((prev) => [item, ...prev]);
+      setReplyTo(null);
+      return;
+    }
+    setSending(true);
+    const path = await uploadChatFile(
+      'voice-notes',
+      conversationId,
+      me.id,
+      uri,
+      'm4a',
+      'audio/mp4',
+    );
+    if (path) {
+      const m = await sendVoiceMessage(
+        conversationId,
+        me.id,
+        path,
+        dur,
+        replyId,
+      );
+      if (m) {
+        setMessages((prev) => [attachReply(m), ...prev]);
+        setReplyTo(null);
+      } else failSend();
+    }
+    setSending(false);
+  };
+
+  /** إيقاف التسجيل وإرسال الفويس فورًا (من غير معاينة) */
+  const stopAndSendRecording = async () => {
+    if (!recorder.isRecording) {
+      setPhase('idle');
+      setRecDrag({ dx: 0, dy: 0 });
+      return;
+    }
+    try {
+      await recorder.stop();
+    } catch {
+      // المسجل واقف أصلًا
+    }
+    const uri = recorder.uri;
+    setPhase('idle');
+    setRecDrag({ dx: 0, dy: 0 });
+    if (!uri) return;
+    const dur = Math.max(1, Math.round(recState.durationMillis / 1000));
+    await sendRecording(uri, dur);
+  };
+
+  const cancelRecording = async () => {
+    if (recorder.isRecording) {
+      try {
+        await recorder.stop();
+      } catch {
+        // المسجل واقف أصلًا
+      }
+    }
+    setPhase('idle');
+    setRecDrag({ dx: 0, dy: 0 });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  };
+
+  const lockRecording = () => {
+    if (!recorder.isRecording) return;
+    setRecDrag({ dx: 0, dy: 0 });
+    setPhase('locked');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  };
+
+  /** مدة التسجيل الحالية بصيغة m:ss */
+  const recSeconds = () => {
+    const s = Math.floor(recState.durationMillis / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  };
+
+  /** أيقونة الإرسال (طيارة ورق) بتتعكس في العربي زي واتساب */
+  const sendFlip: { transform: [{ scaleX: number }] } = {
+    transform: [{ scaleX: i18n.language === 'ar' ? -1 : 1 }],
+  };
+
+  /** إيماءة التسجيل: ضغط مطول يبدأ، سحب لليسار يلغي، سحب لأعلى يقفل،
+   *  والإفلات يبعت (بيقرأ الـ dx/dy النهائية مباشرة) — شغالة على
+   *  الموبايل والويب. الـ PanResponder بيتعمل من جديد في كل render
+   *  فالـ handlers دايمًا fresh. */
+  const recGrant = () => {
+    // ضغطة والمايك بيسجّل أصلًا (التسجيل بدأ والإصبع اترفع بسرعة قبل
+    // ما التجهيز يخلص) — وقّف وابعت اللي اتسجّل
+    if (phase === 'recording') {
+      void stopAndSendRecording();
+      return;
+    }
+    setRecDrag({ dx: 0, dy: 0 });
+    void startRecording();
+  };
+  const recMove = (_e: unknown, gs: { dx: number; dy: number }) => {
+    setRecDrag({ dx: Math.min(0, gs.dx), dy: Math.min(0, gs.dy) });
+  };
+  const recRelease = (_e: unknown, gs: { dx: number; dy: number }) => {
+    if (gs.dx <= -70) {
+      void cancelRecording();
+      return;
+    }
+    if (gs.dy <= -70) {
+      lockRecording();
+      return;
+    }
+    void stopAndSendRecording();
+  };
+  const recTerminate = () => {
+    void cancelRecording();
+  };
+  const recPanResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: recGrant,
+    onPanResponderMove: recMove,
+    onPanResponderRelease: recRelease,
+    onPanResponderTerminate: recTerminate,
+  });
   const listRef = useRef<FlatList<Message | OutboxItem>>(null);
 
   const loadGiftInfo = useCallback(async (msgs: Message[]) => {
@@ -182,8 +350,12 @@ export default function ChatScreen() {
       if (cid && textRef.current.trim()) {
         void saveDraft(cid, textRef.current);
       }
+      // لو خرج من الشات والتسجيل شغال (وضع القفل مثلًا)، وقّفه
+      if (recorder.isRecording) {
+        void recorder.stop().catch(() => {});
+      }
     };
-  }, [conversationId]);
+  }, [conversationId, recorder]);
 
   // v1.6.0 — تتبع الاتصال: لما النت يرجع، ابعت القائمة تلقائيًا
   useEffect(() => {
@@ -194,6 +366,17 @@ export default function ChatScreen() {
     });
     return () => unsub();
   }, []);
+
+  // هزة خفيفة عند دخول منطقة الإلغاء/القفل أثناء سحب التسجيل
+  const prevRecZoneRef = useRef<'none' | 'cancel' | 'lock'>('none');
+  useEffect(() => {
+    const zone =
+      recDrag.dx <= -70 ? 'cancel' : recDrag.dy <= -70 ? 'lock' : 'none';
+    if (zone !== prevRecZoneRef.current) {
+      prevRecZoneRef.current = zone;
+      if (zone !== 'none') Haptics.selectionAsync().catch(() => {});
+    }
+  }, [recDrag]);
 
   // v1.6.0 — لما عنصر معلّق يتبعت بنجاح، شيله من العرض
   // (الرسالة الحقيقية بتوصل من الاشتراك الفوري — بيتفادى التكرار بالـ id)
@@ -313,8 +496,6 @@ export default function ChatScreen() {
 
   if (!me || !conversationId) return <View style={styles.root} />;
 
-  const failSend = () => appAlert(t('common.error'), t('chat.blockedNotice'));
-
   /** نص مختصر لأي رسالة — بيُستخدم في الاقتباس وشريط الرد */
   const snippetFor = (m: ReplyPreview | Message): string => {
     if (m.is_deleted) return t('chats.deleted');
@@ -388,21 +569,6 @@ export default function ChatScreen() {
     setReplyTo(m);
     Haptics.selectionAsync().catch(() => {});
     setTimeout(() => inputRef.current?.focus(), 60);
-  };
-
-  /** يربط معاينة الرد بالرسالة المرسلة محليًا ويصفّي حالة الرد */
-  const attachReply = (m: Message): Message => {
-    if (!replyTo || m.reply_to_id !== replyTo.id) return m;
-    return {
-      ...m,
-      reply_preview: {
-        id: replyTo.id,
-        sender_id: replyTo.sender_id,
-        type: replyTo.type,
-        body: replyTo.body,
-        is_deleted: replyTo.is_deleted,
-      },
-    };
   };
 
   /** إرسال نص — clearComposer بيمسح صندوق الكتابة والمسودة (إرسال عادي)،
@@ -579,89 +745,6 @@ export default function ChatScreen() {
     await sendPickedMedia(asset, asset.type === 'video');
   };
 
-  const onCamera = async () => {
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) return;
-    const res = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images', 'videos'],
-      quality: 0.85,
-    });
-    if (res.canceled || !res.assets[0]) return;
-    const asset = res.assets[0];
-    await sendPickedMedia(asset, asset.type === 'video');
-  };
-
-  const startRecording = async () => {
-    const status = await AudioModule.requestRecordingPermissionsAsync();
-    if (!status.granted) {
-      appAlert(t('common.error'), t('chat.micDenied'));
-      return;
-    }
-    await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
-    await recorder.prepareToRecordAsync();
-    recorder.record();
-    setPhase('recording');
-  };
-
-  const stopRecording = async () => {
-    await recorder.stop();
-    const uri = recorder.uri;
-    if (!uri) {
-      setPhase('idle');
-      return;
-    }
-    setPreviewUri(uri);
-    setPreviewDur(Math.max(1, Math.round(recState.durationMillis / 1000)));
-    setPhase('preview');
-  };
-
-  const sendRecording = async () => {
-    if (!previewUri) return;
-    const replyId = replyTo?.id ?? null;
-    const uri = previewUri;
-    const dur = previewDur;
-    setPreviewUri(null);
-    setPhase('idle');
-    // أوفلاين: الفويس بيتخزن في القائمة ويترفع لما النت يرجع
-    if (!online) {
-      const item = await enqueueOutbox({
-        conversationId,
-        senderId: me.id,
-        type: 'voice',
-        localUri: uri,
-        bucket: 'voice-notes',
-        durationSec: dur,
-        replyToId: replyId,
-      });
-      setPending((prev) => [item, ...prev]);
-      setReplyTo(null);
-      return;
-    }
-    setSending(true);
-    const path = await uploadChatFile(
-      'voice-notes',
-      conversationId,
-      me.id,
-      uri,
-      'm4a',
-      'audio/mp4',
-    );
-    if (path) {
-      const m = await sendVoiceMessage(
-        conversationId,
-        me.id,
-        path,
-        dur,
-        replyId,
-      );
-      if (m) {
-        setMessages((prev) => [attachReply(m), ...prev]);
-        setReplyTo(null);
-      } else failSend();
-    }
-    setSending(false);
-  };
-
   const onLongPress = (m: Message) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setActionMsg(m);
@@ -754,8 +837,9 @@ export default function ChatScreen() {
 
   return (
     <View style={styles.root}>
-      {/* الترويسة */}
-      <View style={styles.header}>
+      {/* الترويسة — مسافة الأمان الحقيقية بتاعة الجهاز (مش رقم ثابت)،
+          وخلفية الهيدر بتملى المساحة دي فمفيش فراغ فوقه */}
+      <View style={[styles.header, { paddingTop: insets.top }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={{ color: colors.text, fontSize: 20 }}>‹</Text>
         </TouchableOpacity>
@@ -924,28 +1008,19 @@ export default function ChatScreen() {
         <View style={styles.blockedBar}>
           <Text style={{ color: colors.danger }}>{t('chat.blockedNotice')}</Text>
         </View>
-      ) : phase === 'recording' ? (
+      ) : phase === 'locked' ? (
         <View style={styles.composer}>
-          <Text style={{ color: colors.danger, flex: 1 }}>
-            🔴 {t('chat.recording')} {Math.floor(recState.durationMillis / 1000)}s
+          <Ionicons name="lock-closed" size={18} color={colors.muted} />
+          <Text style={{ color: colors.text, flex: 1 }}>
+            {recSeconds()} — {t('chat.lockedHint')}
           </Text>
-          <TouchableOpacity onPress={() => { recorder.stop(); setPhase('idle'); }}>
-            <Text style={{ fontSize: 22 }}>🗑</Text>
+          <TouchableOpacity onPress={() => void cancelRecording()} hitSlop={8}>
+            <Ionicons name="trash-outline" size={24} color={colors.danger} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={stopRecording} style={styles.sendBtn}>
-            <Text style={{ fontSize: 18 }}>✔</Text>
-          </TouchableOpacity>
-        </View>
-      ) : phase === 'preview' ? (
-        <View style={styles.composer}>
-          <Text style={{ color: colors.muted, flex: 1 }}>
-            🎤 {previewDur}s — {t('chat.tapSendOrCancel')}
-          </Text>
-          <TouchableOpacity onPress={() => { setPreviewUri(null); setPhase('idle'); }}>
-            <Text style={{ fontSize: 22 }}>🗑</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={sendRecording} style={styles.sendBtn}>
-            <Text style={{ fontSize: 18 }}>➤</Text>
+          <TouchableOpacity
+            onPress={() => void stopAndSendRecording()}
+            style={styles.sendBtn}>
+            <Ionicons name="send" size={18} color={colors.white} style={sendFlip} />
           </TouchableOpacity>
         </View>
       ) : (
@@ -979,39 +1054,61 @@ export default function ChatScreen() {
           ) : null}
           <View style={styles.composer}>
             <View style={styles.inputWrap}>
-              <TouchableOpacity onPress={onEmojiPress} onLongPress={onEmojiLongPress}>
-                <Text style={{ fontSize: 22 }}>{quickEmoji}</Text>
-              </TouchableOpacity>
-              <TextInput
-                ref={inputRef}
-                value={editing ? editText : text}
-                onChangeText={editing ? onTypeEdit : onType}
-                placeholder={editing ? t('chat.editHint') : t('chat.typeMessage')}
-                placeholderTextColor={colors.faint}
-                style={styles.input}
-                multiline
-              />
-              <TouchableOpacity onPress={onCamera}>
-                <Text style={{ fontSize: 22 }}>📷</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={onAttach}>
-                <Text style={{ fontSize: 22 }}>📎</Text>
-              </TouchableOpacity>
+              {phase === 'recording' ? (
+                <View style={styles.recIndicator}>
+                  <PulseDot />
+                  <Text style={styles.recTimer}>{recSeconds()}</Text>
+                  <Text
+                    style={[
+                      styles.recHint,
+                      recDrag.dx <= -70 && { color: colors.danger },
+                    ]}
+                    numberOfLines={1}>
+                    {recDrag.dx <= -70
+                      ? t('chat.releaseToCancel')
+                      : recDrag.dy <= -70
+                        ? t('chat.releaseToLock')
+                        : t('chat.recHint')}
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  <TouchableOpacity onPress={onEmojiPress} onLongPress={onEmojiLongPress}>
+                    <Text style={{ fontSize: 22 }}>{quickEmoji}</Text>
+                  </TouchableOpacity>
+                  <TextInput
+                    ref={inputRef}
+                    value={editing ? editText : text}
+                    onChangeText={editing ? onTypeEdit : onType}
+                    placeholder={editing ? t('chat.editHint') : t('chat.typeMessage')}
+                    placeholderTextColor={colors.faint}
+                    style={styles.input}
+                    multiline
+                  />
+                  <TouchableOpacity onPress={onAttach} hitSlop={6}>
+                    <Ionicons name="attach" size={22} color={colors.muted} />
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
             {editing ? (
               <TouchableOpacity onPress={saveEdit} style={styles.sendBtn}>
-                <Text style={{ fontSize: 18 }}>✔</Text>
+                <Ionicons name="checkmark" size={20} color={colors.white} />
               </TouchableOpacity>
             ) : text.trim() ? (
               <TouchableOpacity onPress={onSendText} style={styles.sendBtn}>
-                <Text style={{ fontSize: 18 }}>➤</Text>
+                <Ionicons name="send" size={18} color={colors.white} style={sendFlip} />
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity
-                onPressIn={startRecording}
-                style={[styles.sendBtn, { backgroundColor: colors.magenta }]}>
-                <Text style={{ fontSize: 18 }}>🎤</Text>
-              </TouchableOpacity>
+              <View {...recPanResponder.panHandlers} style={{ padding: 4, margin: -4 }}>
+                <View
+                  style={[
+                    styles.sendBtn,
+                    phase === 'recording' && { transform: [{ scale: 1.1 }] },
+                  ]}>
+                  <Ionicons name="mic" size={22} color={colors.white} />
+                </View>
+              </View>
             )}
           </View>
         </>
@@ -1158,6 +1255,41 @@ export default function ChatScreen() {
         onClose={() => setAnimGift(null)}
       />
     </View>
+  );
+}
+
+/** نقطة حمرا بتنبض أثناء التسجيل (ستايل واتساب) */
+function PulseDot() {
+  const { colors } = useTheme();
+  const [opacity] = useState(() => new Animated.Value(1));
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.25,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [opacity]);
+  return (
+    <Animated.View
+      style={{
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: colors.danger,
+        opacity,
+      }}
+    />
   );
 }
 
@@ -1327,7 +1459,7 @@ function PendingBubble({ item }: { item: OutboxItem }) {
 }
 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg, paddingTop: 44 },
+  root: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1562,6 +1694,21 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  /** مؤشر التسجيل جوه حقل الكتابة (نقطة بتنبض + مؤقت + تلميح السحب) */
+  recIndicator: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 9,
+  },
+  recTimer: {
+    color: colors.text,
+    fontSize: fonts.sizes.md,
+    fontWeight: fonts.weights.bold,
+    fontVariant: ['tabular-nums'],
+  },
+  recHint: { color: colors.muted, fontSize: fonts.sizes.sm, flex: 1 },
   blockedBar: {
     padding: spacing.md,
     alignItems: 'center',

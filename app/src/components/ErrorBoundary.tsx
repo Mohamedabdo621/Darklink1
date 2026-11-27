@@ -1,7 +1,16 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { fonts, spacing, type ThemeColors } from '../theme';
+
+// فشل تحميل chunk بعد تحديث (نسخة قديمة متخزنة في المتصفح طلبت ملف
+// مبقاش موجود) — أشهرها AsyncRequireError: Loading module ... failed.
+function isChunkLoadError(error: Error): boolean {
+  const msg = `${error.name} ${error.message}`;
+  return /loading module|chunkloaderror|loading chunk|failed to fetch|dynamically imported module/i.test(
+    msg,
+  );
+}
 
 // حاجز أخطاء: لو حصل خطأ برمجي أثناء عرض شاشة، نعرض نص الخطأ بدل ما يقفل التطبيق
 interface Props {
@@ -20,6 +29,23 @@ class ErrorBoundaryInner extends React.Component<Props & { colors: ThemeColors }
   }
 
   componentDidCatch(error: Error) {
+    // ويب بس: لو الخطأ فشل تحميل ملف بعد تحديث، حدّث الصفحة مرة واحدة
+    // (النسخة الجديدة هتتحمل) بدل الشاشة الحمرا — والعلامة في
+    // sessionStorage بتمنع loop لو التحديث نفسه فشل
+    if (Platform.OS === 'web' && isChunkLoadError(error)) {
+      try {
+        if (
+          typeof window !== 'undefined' &&
+          window.sessionStorage?.getItem('darklink:chunk-reload') !== '1'
+        ) {
+          window.sessionStorage.setItem('darklink:chunk-reload', '1');
+          window.location.reload();
+          return;
+        }
+      } catch {
+        // التخزين مش متاح — اعرض الخطأ عادي
+      }
+    }
     this.setState({ error });
   }
 

@@ -1,11 +1,11 @@
 import React, { useCallback, useState, useMemo } from 'react';
-import { Image, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { router, useFocusEffect } from 'expo-router';
 import { TabSwipe } from '../../components/TabSwipe';
 import { useTranslation } from 'react-i18next';
-import { Chip, GlowCard, GradientRing, NeonButton, Screen } from '../../components/ui';
-import { AvatarInitial } from '../../components/Avatar';
+import { Chip, GlowCard, NeonButton, Screen } from '../../components/ui';
+import { Avatar } from '../../components/Avatar';
 import { useAuth } from '../../contexts/AuthContext';
 import { appAlert } from '../../lib/dialog';
 import { supabase } from '../../lib/supabase';
@@ -88,13 +88,7 @@ export default function ProfileTab() {
       <Screen>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={{ alignItems: 'center', marginTop: spacing.lg }}>
-          <GradientRing size={110}>
-            {avatar ? (
-              <Image source={{ uri: avatar }} style={styles.avatar} />
-            ) : (
-              <AvatarInitial name={shownNameOf(profile)} size={104} />
-            )}
-          </GradientRing>
+          <Avatar uri={avatar} name={shownNameOf(profile)} size={110} />
           <Text style={styles.name}>{shownNameOf(profile)}</Text>
           <Text style={{ color: colors.faint }}>@{profile.anonymous_alias}</Text>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.sm }}>

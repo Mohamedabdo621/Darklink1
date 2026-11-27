@@ -1,7 +1,7 @@
 import React from 'react';
 import { Image, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { gradients } from '../theme';
+import { useTheme } from '../contexts/ThemeContext';
+import { GradientRing } from './ui';
 
 /** الحرف الأول من الاسم (يدعم العربي والإنجليزي) */
 function initialOf(name?: string | null): string {
@@ -9,35 +9,37 @@ function initialOf(name?: string | null): string {
   return ch || '؟';
 }
 
-/** دائرة تدرج بنفسجي بالحرف الأول — بديل الصورة الرمزية الافتراضية */
+/** دائرة زجاجية شفافة بالحرف الأول — بديل الصورة الرمزية الافتراضية */
 export function AvatarInitial({ name, size }: { name?: string | null; size: number }) {
+  const { colors } = useTheme();
   return (
-    <LinearGradient
-      colors={[...gradients.primary]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
+    <View
       style={{
         width: size,
         height: size,
         borderRadius: size / 2,
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: colors.glass,
+        borderWidth: 1,
+        borderColor: colors.glassBorder,
       }}>
       <Text
         style={{
-          color: '#ffffff',
+          color: colors.text,
           fontSize: Math.round(size * 0.42),
           fontWeight: '700',
         }}>
         {initialOf(name)}
       </Text>
-    </LinearGradient>
+    </View>
   );
 }
 
 /**
- * صورة رمزية بحلقة تدرج بنفسجية؛ ولو مفيش صورة تظهر دائرة الحرف الأول.
- * (لا مزيد من الصورة الرمزية الزرقاء المسطحة 👤)
+ * صورة رمزية موحدة في كل مكان: إطار قوس قزح + خلفية زجاجية شفافة؛
+ * ولو مفيش صورة تظهر دائرة الحرف الأول بنفس الإطار.
+ * (لا مزيد من الدائرة البنفسجية المصمتة)
  */
 export function Avatar({
   uri,
@@ -48,34 +50,17 @@ export function Avatar({
   name?: string | null;
   size: number;
 }) {
-  if (!uri) return <AvatarInitial name={name} size={size} />;
-  const inner = size - 5;
+  const inner = size - 6;
   return (
-    <LinearGradient
-      colors={[...gradients.primary]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        padding: 2.5,
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}>
-      <View
-        style={{
-          width: inner,
-          height: inner,
-          borderRadius: inner / 2,
-          backgroundColor: '#8b5cf6',
-          overflow: 'hidden',
-        }}>
+    <GradientRing size={size}>
+      {uri ? (
         <Image
           source={{ uri }}
           style={{ width: inner, height: inner, borderRadius: inner / 2 }}
         />
-      </View>
-    </LinearGradient>
+      ) : (
+        <AvatarInitial name={name} size={inner} />
+      )}
+    </GradientRing>
   );
 }

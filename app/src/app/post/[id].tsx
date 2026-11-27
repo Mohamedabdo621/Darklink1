@@ -3,8 +3,8 @@ import { Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View 
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import { GlowCard, GradientRing, NeonButton, Screen } from '../../components/ui';
-import { AvatarInitial } from '../../components/Avatar';
+import { GlowCard, NeonButton, Screen } from '../../components/ui';
+import { Avatar } from '../../components/Avatar';
 import { useAuth } from '../../contexts/AuthContext';
 import { avatarSignedUrl } from '../../services/profile';
 import {
@@ -77,9 +77,7 @@ export default function PostDetail() {
         {post ? (
           <GlowCard>
             <View style={styles.header}>
-              <GradientRing size={44}>
-                <AvatarInitial name={post.shown_name} size={38} />
-              </GradientRing>
+              <Avatar uri={post.avatar_url ?? null} name={post.shown_name} size={44} />
               <View>
                 <Text style={styles.name}>
                   {post.shown_name}
@@ -104,13 +102,7 @@ export default function PostDetail() {
         {comments.map((c) => (
           <GlowCard key={c.id} style={styles.comment}>
             <View style={styles.header}>
-              <GradientRing size={36}>
-                {avatars[c.user_id] ? (
-                  <Image source={{ uri: avatars[c.user_id] }} style={styles.cAvatar} />
-                ) : (
-                  <AvatarInitial name={c.shown_name} size={30} />
-                )}
-              </GradientRing>
+              <Avatar uri={avatars[c.user_id] ?? null} name={c.shown_name} size={36} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>
                   {c.shown_name}

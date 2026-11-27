@@ -1,7 +1,20 @@
-import React, { useCallback, useEffect, useState, useMemo } from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import {
+  Image,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Screen } from '../components/ui';
 import { Avatar } from '../components/Avatar';
@@ -10,39 +23,63 @@ import { useAuth } from '../contexts/AuthContext';
 import { appAlert } from '../lib/dialog';
 import type { Story } from '../lib/types';
 import {
+  addStoryComment,
   deleteStory,
   fetchStories,
+  getStoryComments,
+  getStoryLikeState,
+  getStoryStats,
+  recordStoryView,
   storySignedUrl,
+  toggleStoryLike,
+  type StoryComment,
+  type StoryStats,
 } from '../services/features';
 import { avatarSignedUrl } from '../services/profile';
 import { fetchPublicProfile } from '../services/social';
-import { fonts, gradients, spacing } from '../theme';
+import { fonts, gradients, radius, spacing } from '../theme';
 
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme';
 /** عارض قصص مستخدم واحد: تقدم تلقائي + تنقل باللمس */
 export default function StoryViewer() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
-  const { userId } = useLocalSearchParams<{ userId: string }>();
+  const { userId, storyId } = useLocalSearchParams<{ userId: string; storyId?: string }>();
   const { profile: me } = useAuth();
   const [stories, setStories] = useState<Story[]>([]);
   const [idx, setIdx] = useState(0);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [avatar, setAvatar] = useState<string | null>(null);
+  // تفاعلات الستوري: قلب + تعليقات + إحصائيات المالك
+  const [liked, setLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState(0);
+  const [comments, setComments] = useState<StoryComment[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [commentFocused, setCommentFocused] = useState(false);
+  const [stats, setStats] = useState<StoryStats | null>(null);
+  const [sheet, setSheet] = useState<'none' | 'views' | 'comments'>('none');
+  const viewedRef = useRef(new Set<string>());
 
   const load = useCallback(async () => {
     if (!userId) return;
     const all = await fetchStories();
-    setStories(all.filter((s) => s.user_id === userId));
+    const mine = all.filter((s) => s.user_id === userId);
+    setStories(mine);
+    // فتح على قصة معينة (من إشعار مثلًا) بدل أول قصة
+    if (storyId) {
+      const i = mine.findIndex((s) => s.id === storyId);
+      if (i >= 0) setIdx(i);
+    }
     const pub = await fetchPublicProfile(userId);
     if (pub) {
       setName(pub.shown_name);
       setAvatar(await avatarSignedUrl(pub.avatar_url));
     }
-  }, [userId]);
+  }, [userId, storyId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -67,15 +104,47 @@ export default function StoryViewer() {
     };
   }, [current]);
 
-  // تقدم تلقائي كل ٥ ثوانٍ
+  // تفاعلات القصة الحالية: سجّل المشاهدة مرة واحدة، وحمّل القلب/التعليقات/الإحصائيات
+  useEffect(() => {
+    if (!current || !me) return;
+    const isMine = current.user_id === me.id;
+    if (!isMine && !viewedRef.current.has(current.id)) {
+      viewedRef.current.add(current.id);
+      void recordStoryView(current.id);
+    }
+    let live = true;
+    if (isMine) {
+      void getStoryStats(current.id).then((s) => {
+        if (live) setStats(s);
+      });
+    } else {
+      void getStoryLikeState(current.id).then((s) => {
+        if (live && s) {
+          setLiked(s.liked);
+          setLikesCount(s.likes);
+        }
+      });
+    }
+    void getStoryComments(current.id).then((list) => {
+      if (live) setComments(list);
+    });
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCommentText('');
+    return () => {
+      live = false;
+    };
+  }, [current, me]);
+
+  // تقدم تلقائي كل ٥ ثوانٍ — بيتوقف وأنت بتكتب تعليق أو فاتح ورقة الإحصائيات
   useEffect(() => {
     if (!stories.length) return;
+    if (commentFocused || sheet !== 'none') return;
     const iv = setTimeout(() => {
       if (idx < stories.length - 1) setIdx(idx + 1);
       else router.back();
     }, 5000);
     return () => clearTimeout(iv);
-  }, [idx, stories.length]);
+  }, [idx, stories.length, commentFocused, sheet]);
 
   if (!current) {
     return (
@@ -102,8 +171,38 @@ export default function StoryViewer() {
     ]);
   };
 
+  /** قلب / إلغاء قلب — تحديث متفائل وتراجع لو فشل */
+  const onToggleLike = async () => {
+    if (!current) return;
+    const prevLiked = liked;
+    const prevCount = likesCount;
+    setLiked(!prevLiked);
+    setLikesCount(prevCount + (prevLiked ? -1 : 1));
+    const res = await toggleStoryLike(current.id);
+    if (!res) {
+      setLiked(prevLiked);
+      setLikesCount(prevCount);
+    } else {
+      setLiked(res.liked);
+      setLikesCount(res.likes);
+    }
+  };
+
+  const onSendComment = async () => {
+    if (!current || !commentText.trim()) return;
+    const body = commentText.trim();
+    setCommentText('');
+    if (await addStoryComment(current.id, body)) {
+      setComments(await getStoryComments(current.id));
+      if (mine) {
+        const s = await getStoryStats(current.id);
+        if (s) setStats(s);
+      }
+    }
+  };
+
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { paddingTop: insets.top }]}>
       {/* أشرطة التقدم */}
       <View style={styles.bars}>
         {stories.map((s, i) => (
@@ -155,12 +254,151 @@ export default function StoryViewer() {
         style={styles.tapEnd}
         onPress={() => (idx < stories.length - 1 ? setIdx(idx + 1) : router.back())}
       />
+
+      {/* شريط التفاعل: قلب + تعليق (مشاهد) أو إحصائيات (مالك) */}
+      <KeyboardAvoidingView behavior="padding" style={styles.bottomBarWrap}>
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 10 }]}>
+          {mine ? (
+            <>
+              <TouchableOpacity style={styles.barBtn} onPress={() => setSheet('views')}>
+                <Ionicons name="eye-outline" size={22} color={colors.white} />
+                <Text style={styles.barBtnText}>{stats?.views ?? 0}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.barBtn} onPress={() => setSheet('comments')}>
+                <Ionicons name="chatbubble-outline" size={22} color={colors.white} />
+                <Text style={styles.barBtnText}>
+                  {stats?.comments ?? comments.length}
+                </Text>
+              </TouchableOpacity>
+              <View style={styles.barBtn}>
+                <Ionicons name="heart" size={22} color={colors.danger} />
+                <Text style={styles.barBtnText}>{stats?.likes ?? 0}</Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <TouchableOpacity style={styles.barBtn} onPress={() => void onToggleLike()}>
+                <Ionicons
+                  name={liked ? 'heart' : 'heart-outline'}
+                  size={24}
+                  color={liked ? colors.danger : colors.white}
+                />
+                <Text style={styles.barBtnText}>{likesCount}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.barBtn} onPress={() => setSheet('comments')}>
+                <Ionicons name="chatbubble-outline" size={22} color={colors.white} />
+                <Text style={styles.barBtnText}>{comments.length}</Text>
+              </TouchableOpacity>
+              <View style={styles.commentBox}>
+                <TextInput
+                  value={commentText}
+                  onChangeText={setCommentText}
+                  placeholder={t('stories.addComment')}
+                  placeholderTextColor="rgba(255,255,255,0.6)"
+                  style={styles.commentInput}
+                  onFocus={() => setCommentFocused(true)}
+                  onBlur={() => setCommentFocused(false)}
+                  maxLength={500}
+                />
+                <TouchableOpacity onPress={() => void onSendComment()} hitSlop={6}>
+                  <Ionicons name="send" size={20} color={colors.white} />
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+      </KeyboardAvoidingView>
+
+      {/* ورقة المشاهدات / التعليقات */}
+      <Modal
+        transparent
+        visible={sheet !== 'none'}
+        animationType="fade"
+        onRequestClose={() => setSheet('none')}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setSheet('none')}>
+          <Pressable style={styles.sheet} onPress={() => {}}>
+            <Text style={styles.sheetTitle}>
+              {sheet === 'views' ? t('stories.viewers') : t('stories.comments')}
+            </Text>
+            <ScrollView style={{ maxHeight: 380 }}>
+              {sheet === 'views' ? (
+                stats?.viewers.length ? (
+                  stats.viewers.map((v) => (
+                    <View key={v.user_id} style={styles.personRow}>
+                      <PersonAvatar
+                        key={v.avatar_url ?? 'none'}
+                        path={v.avatar_url}
+                        name={v.shown_name}
+                        size={36}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.personName}>
+                          {v.shown_name}
+                          {v.is_vip ? ' 👑' : ''}
+                        </Text>
+                        <Text style={styles.personTime}>{formatTimeAr(v.viewed_at)}</Text>
+                      </View>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.emptyText}>{t('stories.noViews')}</Text>
+                )
+              ) : comments.length ? (
+                comments.map((c) => (
+                  <View key={c.id} style={styles.personRow}>
+                    <PersonAvatar
+                      key={c.avatar_url ?? 'none'}
+                      path={c.avatar_url}
+                      name={c.shown_name}
+                      size={36}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.personName}>
+                        {c.shown_name}
+                        {c.is_vip ? ' 👑' : ''}
+                      </Text>
+                      <Text style={styles.personBody}>{c.body}</Text>
+                      <Text style={styles.personTime}>{formatTimeAr(c.created_at)}</Text>
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.emptyText}>{t('stories.noComments')}</Text>
+              )}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
 
+/** صورة شخص في ورقة المشاهدات/التعليقات — مسار التخزين بيتحول لرابط موقّع */
+function PersonAvatar({
+  path,
+  name,
+  size,
+}: {
+  path: string | null;
+  name: string;
+  size: number;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    if (!path) return;
+    avatarSignedUrl(path).then((u) => {
+      if (live) setUrl(u);
+    });
+    return () => {
+      live = false;
+    };
+  }, [path]);
+  return <Avatar uri={url} name={name} size={size} />;
+}
+
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000', paddingTop: 44 },
+  root: { flex: 1, backgroundColor: '#000' },
   bars: { flexDirection: 'row', gap: 4, paddingHorizontal: spacing.sm },
   barTrack: {
     flex: 1,
@@ -203,4 +441,80 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   tapStart: { position: 'absolute', start: 0, top: 110, bottom: 0, width: '35%' },
   tapEnd: { position: 'absolute', end: 0, top: 110, bottom: 0, width: '35%' },
+  /** شريط التفاعل السفلي — فوق مناطق اللمس (بيترسم بعدها) */
+  bottomBarWrap: { position: 'absolute', start: 0, end: 0, bottom: 0 },
+  bottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  barBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, padding: 4 },
+  barBtnText: {
+    color: colors.white,
+    fontSize: fonts.sizes.sm,
+    fontWeight: fonts.weights.bold,
+  },
+  commentBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+  },
+  commentInput: {
+    flex: 1,
+    color: colors.white,
+    fontSize: fonts.sizes.md,
+    textAlign: 'left',
+  },
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(3,0,8,0.6)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: colors.surface,
+    borderTopStartRadius: 22,
+    borderTopEndRadius: 22,
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    padding: spacing.md,
+    paddingBottom: spacing.xl,
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
+  },
+  sheetTitle: {
+    color: colors.text,
+    fontSize: fonts.sizes.lg,
+    fontWeight: fonts.weights.bold,
+    marginBottom: spacing.sm,
+  },
+  personRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  personName: {
+    color: colors.text,
+    fontSize: fonts.sizes.md,
+    fontWeight: fonts.weights.bold,
+  },
+  personBody: { color: colors.text, fontSize: fonts.sizes.md, marginTop: 2 },
+  personTime: { color: colors.muted, fontSize: fonts.sizes.xs, marginTop: 2 },
+  emptyText: {
+    color: colors.muted,
+    fontSize: fonts.sizes.md,
+    textAlign: 'center',
+    paddingVertical: spacing.lg,
+  },
 });

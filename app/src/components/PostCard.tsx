@@ -11,8 +11,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
-import { GlowCard, GradientRing } from './ui';
-import { AvatarInitial } from './Avatar';
+import { GlowCard } from './ui';
+import { Avatar } from './Avatar';
 import { appAlert, appPrompt } from '../lib/dialog';
 import { loadDataSaver } from '../lib/dataSaver';
 import type { Post } from '../lib/types';
@@ -190,13 +190,7 @@ export default function PostCard({
       }}>
       <GlowCard style={styles.card}>
         <View style={styles.header}>
-          <GradientRing size={44}>
-            {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-            ) : (
-              <AvatarInitial name={post.shown_name} size={38} />
-            )}
-          </GradientRing>
+          <Avatar uri={avatarUrl} name={post.shown_name} size={44} />
           <View style={{ flex: 1 }}>
             <Text style={styles.name}>
               {post.shown_name}
