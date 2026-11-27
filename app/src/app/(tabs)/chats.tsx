@@ -7,6 +7,7 @@ import {
   View,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 import Swipeable, { SwipeDirection, type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -114,7 +115,11 @@ function SwipeAction({
       <TouchableOpacity
         style={[styles.actionBtn, { backgroundColor: isHide ? colors.dangerSoft : colors.primary }]}
         onPress={() => onPress(item)}>
-        <Text style={styles.actionIcon}>{isHide ? '🗑' : '🚫'}</Text>
+        <Ionicons
+          name={isHide ? 'trash-outline' : 'ban-outline'}
+          size={22}
+          color={colors.white}
+        />
         <Text style={styles.actionLabel}>
           {isHide ? t('chats.hide') : t('userProfile.block')}
         </Text>
@@ -264,7 +269,7 @@ export default function Chats() {
           if (await blockUser(me.id, item.other!.id)) {
             await hideConversation(item.conversationId);
             removeRow(item.conversationId);
-            appAlert('🚫', t('chats.blockedUser'));
+            appAlert(t('chats.blockedUser'));
           }
         },
       },
@@ -485,7 +490,6 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: 3,
     paddingVertical: spacing.sm,
   },
-  actionIcon: { fontSize: 19 },
   actionLabel: {
     color: colors.white,
     fontSize: fonts.sizes.xs,

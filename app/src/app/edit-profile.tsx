@@ -7,6 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { GlowCard, NeonButton, NeonInput, Screen, ToggleRow } from '../components/ui';
+import { GlassIconChip } from '../components/GlassIconButton';
 import { Avatar } from '../components/Avatar';
 import { useAuth } from '../contexts/AuthContext';
 import type { IdentityMode, Profile } from '../lib/types';
@@ -209,9 +210,12 @@ function EditProfileForm({ profile }: { profile: Profile }) {
         </GlowCard>
 
         <GlowCard style={{ marginTop: spacing.md }}>
-          <Text style={styles.sectionTitle}>
-            🎯 {t('interests.title')} — {t('interests.pickUpTo')}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <GlassIconChip name="heart-outline" size={14} />
+            <Text style={styles.sectionTitle}>
+              {t('interests.title')} — {t('interests.pickUpTo')}
+            </Text>
+          </View>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
             {INTEREST_KEYS.map((k) => {
               const active = interests.includes(k);

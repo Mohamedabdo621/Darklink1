@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { mediaSignedUrl } from '../services/chat';
 import { fonts, radius, spacing } from '../theme';
@@ -69,7 +70,7 @@ export default function VoiceBubble({
   return (
     <View style={styles.row}>
       <TouchableOpacity onPress={toggle} style={[styles.playBtn, mine && styles.playBtnMine]}>
-        <Text style={{ fontSize: 15 }}>{status.playing ? '⏸' : '▶️'}</Text>
+        <Ionicons name={status.playing ? 'pause' : 'play'} size={16} color={colors.white} />
       </TouchableOpacity>
       <View style={styles.bars}>
         {bars.map((h, i) => (

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -27,10 +28,10 @@ export default function Onboarding() {
   const [page, setPage] = useState(0);
   const listRef = useRef<FlatList>(null);
 
-  const slides = [
-    { icon: '🌑', title: t('onboarding.slide1Title'), body: t('onboarding.slide1Body') },
-    { icon: '🪪', title: t('onboarding.slide2Title'), body: t('onboarding.slide2Body') },
-    { icon: '🎁', title: t('onboarding.slide3Title'), body: t('onboarding.slide3Body') },
+  const slides: { icon: React.ComponentProps<typeof Ionicons>['name']; title: string; body: string }[] = [
+    { icon: 'moon-outline', title: t('onboarding.slide1Title'), body: t('onboarding.slide1Body') },
+    { icon: 'id-card-outline', title: t('onboarding.slide2Title'), body: t('onboarding.slide2Body') },
+    { icon: 'gift-outline', title: t('onboarding.slide3Title'), body: t('onboarding.slide3Body') },
   ];
 
   const pickLanguage = async (lang: Language) => {
@@ -99,7 +100,9 @@ export default function Onboarding() {
         }
         renderItem={({ item }) => (
           <View style={[styles.slide, { width: width - spacing.lg * 2 }]}>
-            <Text style={{ fontSize: 64 }}>{item.icon}</Text>
+            <View style={styles.slideIconWrap}>
+              <Ionicons name={item.icon} size={64} color={colors.primaryBright} />
+            </View>
             <Text style={styles.slideTitle}>{item.title}</Text>
             <Text style={styles.slideBody}>{item.body}</Text>
           </View>
@@ -146,6 +149,17 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: 6,
   },
   slide: { alignItems: 'center', justifyContent: 'center', gap: spacing.md, paddingHorizontal: spacing.lg },
+  /** دايرة زجاجية كبيرة لأيقونة الشريحة */
+  slideIconWrap: {
+    width: 124,
+    height: 124,
+    borderRadius: 62,
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   slideTitle: {
     color: colors.text,
     fontSize: fonts.sizes.xxl,

@@ -11,6 +11,7 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -155,12 +156,15 @@ export function NeonButton({
   loading,
   disabled,
   variant = 'primary',
+  icon,
 }: {
   title: string;
   onPress: () => void;
   loading?: boolean;
   disabled?: boolean;
   variant?: 'primary' | 'gold' | 'ghost' | 'danger';
+  /** أيقونة vector قبل العنوان (بدل الإيموجي) */
+  icon?: React.ComponentProps<typeof Ionicons>['name'];
 }) {
   const { colors, resolved } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -171,11 +175,23 @@ export function NeonButton({
   const pressOut = () =>
     Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 60, bounciness: 6 }).start();
 
-  const content = loading ? (
-    <ActivityIndicator color={colors.white} />
-  ) : (
-    <Text style={styles.btnText}>{title}</Text>
+  const iconColor =
+    variant === 'ghost' ? colors.text : variant === 'danger' ? colors.danger : colors.white;
+  const label = (
+    <View style={styles.btnContent}>
+      {icon ? <Ionicons name={icon} size={19} color={iconColor} /> : null}
+      <Text
+        style={[
+          styles.btnText,
+          variant === 'ghost' && styles.ghostBtnText,
+          variant === 'danger' && { color: colors.danger },
+        ]}>
+        {title}
+      </Text>
+    </View>
   );
+
+  const content = loading ? <ActivityIndicator color={colors.white} /> : label;
 
   if (variant === 'ghost' || variant === 'danger') {
     return (
@@ -189,17 +205,7 @@ export function NeonButton({
             styles.ghostBtn,
             variant === 'danger' && { borderColor: colors.danger },
           ]}>
-          {loading ? (
-            <ActivityIndicator color={colors.text} />
-          ) : (
-            <Text
-              style={[
-                styles.ghostBtnText,
-                variant === 'danger' && { color: colors.danger },
-              ]}>
-              {title}
-            </Text>
-          )}
+          {loading ? <ActivityIndicator color={colors.text} /> : label}
         </Pressable>
       </Animated.View>
     );
@@ -389,6 +395,13 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.white,
     fontSize: fonts.sizes.md,
     fontWeight: fonts.weights.bold,
+  },
+  /** صف محتوى الزر: أيقونة + عنوان */
+  btnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
   },
   ghostBtn: {
     borderRadius: radius.md,

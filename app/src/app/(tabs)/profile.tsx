@@ -1,10 +1,12 @@
 import React, { useCallback, useState, useMemo } from 'react';
 import { ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { router, useFocusEffect } from 'expo-router';
 import { TabSwipe } from '../../components/TabSwipe';
 import { useTranslation } from 'react-i18next';
 import { Chip, GlowCard, NeonButton, Screen } from '../../components/ui';
+import { GlassIconChip } from '../../components/GlassIconButton';
 import { Avatar } from '../../components/Avatar';
 import { useAuth } from '../../contexts/AuthContext';
 import { appAlert } from '../../lib/dialog';
@@ -131,11 +133,17 @@ export default function ProfileTab() {
         <View style={styles.statsRow}>
           <GlowCard style={styles.stat}>
             <Text style={styles.statNum}>{received}</Text>
-            <Text style={styles.statLabel}>🎁 {t('profile.giftsReceived')}</Text>
+            <View style={styles.statLabelRow}>
+              <GlassIconChip name="gift-outline" size={13} />
+              <Text style={styles.statLabel}>{t('profile.giftsReceived')}</Text>
+            </View>
           </GlowCard>
           <GlowCard style={styles.stat}>
             <Text style={styles.statNum}>{sent}</Text>
-            <Text style={styles.statLabel}>📤 {t('profile.giftsSent')}</Text>
+            <View style={styles.statLabelRow}>
+              <GlassIconChip name="paper-plane-outline" size={13} />
+              <Text style={styles.statLabel}>{t('profile.giftsSent')}</Text>
+            </View>
           </GlowCard>
         </View>
 
@@ -148,9 +156,12 @@ export default function ProfileTab() {
                 justifyContent: 'space-between',
                 alignItems: 'center',
               }}>
-              <Text style={{ color: colors.text, fontWeight: '700', fontSize: fonts.sizes.md }}>
-                ⭐ {t('level.level')} {myLevel.level}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                <GlassIconChip name="star-outline" size={14} color={colors.gold} />
+                <Text style={{ color: colors.text, fontWeight: '700', fontSize: fonts.sizes.md }}>
+                  {t('level.level')} {myLevel.level}
+                </Text>
+              </View>
               <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
                 {myLevel.xp} {t('level.xp')}
                 {myLevel.next_at
@@ -175,9 +186,12 @@ export default function ProfileTab() {
 
         {/* الدعوات */}
         <GlowCard style={{ marginTop: spacing.md }}>
-          <Text style={{ color: colors.text, fontWeight: '700', fontSize: fonts.sizes.md }}>
-            🎁 {t('referral.title')}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <GlassIconChip name="gift-outline" size={14} />
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: fonts.sizes.md }}>
+              {t('referral.title')}
+            </Text>
+          </View>
           <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm, marginTop: 4, lineHeight: 19 }}>
             {t('referral.desc')}
           </Text>
@@ -202,16 +216,24 @@ export default function ProfileTab() {
               {t('referral.invited', { count: refCount })}
             </Text>
           </View>
-          <Text style={{ color: colors.gold, fontSize: fonts.sizes.sm, marginTop: 4, fontWeight: '700' }}>
-            💎 {t('referral.earned', { count: refEarned })}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+            <GlassIconChip name="diamond-outline" size={13} color={colors.gold} />
+            <Text style={{ color: colors.gold, fontSize: fonts.sizes.sm, fontWeight: '700' }}>
+              {t('referral.earned', { count: refEarned })}
+            </Text>
+          </View>
           <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
             <View style={{ flex: 1 }}>
-              <NeonButton title={`📤 ${t('referral.share')}`} onPress={shareInvite} />
+              <NeonButton
+                title={t('referral.share')}
+                icon="paper-plane-outline"
+                onPress={shareInvite}
+              />
             </View>
             <View style={{ flex: 1 }}>
               <NeonButton
-                title={`📋 ${t('referral.copy')}`}
+                title={t('referral.copy')}
+                icon="copy-outline"
                 variant="ghost"
                 onPress={copyInviteCode}
               />
@@ -220,13 +242,22 @@ export default function ProfileTab() {
         </GlowCard>
 
         {/* الإنجازات */}
-        <Text style={styles.sectionTitle}>🏆 {t('achievements.title')}</Text>
+        <View style={styles.sectionTitleRow}>
+          <GlassIconChip name="trophy-outline" size={15} color={colors.gold} />
+          <Text style={[styles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}>
+            {t('achievements.title')}
+          </Text>
+        </View>
         <View style={styles.achGrid}>
           {ACHIEVEMENT_KEYS.map((k) => {
             const has = achievements.includes(k);
             return (
               <View key={k} style={[styles.achItem, !has && { opacity: 0.35 }]}>
-                <Text style={{ fontSize: 24 }}>{has ? '🏅' : '🔒'}</Text>
+                <Ionicons
+                  name={has ? 'trophy' : 'lock-closed-outline'}
+                  size={24}
+                  color={has ? colors.gold : colors.muted}
+                />
                 <Text style={styles.achLabel}>{t(`achievements.${k}`)}</Text>
               </View>
             );
@@ -239,18 +270,21 @@ export default function ProfileTab() {
             onPress={() => router.push('/edit-profile')}
           />
           <NeonButton
-            title={`👀 ${t('visitors.title')}`}
+            title={t('visitors.title')}
+            icon="eye-outline"
             variant="ghost"
             onPress={() => router.push('/profile-visitors')}
           />
           <NeonButton
-            title={`🎯 ${t('quests.title')}`}
+            title={t('quests.title')}
+            icon="list-outline"
             variant="ghost"
             onPress={() => router.push('/quests')}
           />
           {profile.is_admin ? (
             <NeonButton
-              title={`🛠 ${t('admin.title')}`}
+              title={t('admin.title')}
+              icon="construct-outline"
               variant="gold"
               onPress={() => router.push('/admin')}
             />
@@ -297,7 +331,7 @@ function InfoRow({
         </Text>
         {onCopy ? (
           <TouchableOpacity onPress={onCopy} hitSlop={8}>
-            <Text style={{ fontSize: 16 }}>📋</Text>
+            <Ionicons name="copy-outline" size={16} color={colors.muted} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -334,6 +368,14 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     marginTop: spacing.lg,
     marginBottom: spacing.md,
   },
+  /** صف عنوان قسم: شريحة أيقونة زجاجية + العنوان */
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+  },
   achGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   achItem: {
     width: '31%',
@@ -363,5 +405,12 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   statsRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
   stat: { flex: 1, alignItems: 'center' },
   statNum: { color: colors.text, fontSize: fonts.sizes.xxl, fontWeight: fonts.weights.black },
-  statLabel: { color: colors.muted, fontSize: fonts.sizes.sm, marginTop: 2 },
+  statLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    marginTop: 2,
+  },
+  statLabel: { color: colors.muted, fontSize: fonts.sizes.sm },
 });

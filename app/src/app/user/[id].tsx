@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { appAlert, appPrompt } from '../../lib/dialog';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Chip, GlowCard, NeonButton, Screen } from '../../components/ui';
+import { GlassIconChip } from '../../components/GlassIconButton';
 import { Avatar } from '../../components/Avatar';
 import { formatTimeAr } from '../../lib/format';
 import { useAuth } from '../../contexts/AuthContext';
@@ -97,7 +99,7 @@ export default function UserProfile() {
       ? await unblockUser(me.id, user.id)
       : await blockUser(me.id, user.id);
     if (ok) {
-      if (!blocked) appAlert('🚫', t('userProfile.blocked'));
+      if (!blocked) appAlert(t('userProfile.blocked'));
       setBlocked(!blocked);
     }
   };
@@ -168,18 +170,31 @@ export default function UserProfile() {
             <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
               {t('profile.accountId')}
             </Text>
-            <Text
+            <View
               style={{
-                color: colors.text,
-                fontSize: fonts.sizes.sm,
-                fontFamily: 'monospace',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
               }}>
-              {String(user.public_id)} 📋
-            </Text>
+              <Text
+                style={{
+                  color: colors.text,
+                  fontSize: fonts.sizes.sm,
+                  fontFamily: 'monospace',
+                }}>
+                {String(user.public_id)}
+              </Text>
+              <Ionicons name="copy-outline" size={14} color={colors.muted} />
+            </View>
           </TouchableOpacity>
         ) : null}
 
-        <Text style={styles.section}>🎁 {t('userProfile.receivedGifts')}</Text>
+        <View style={styles.sectionRow}>
+          <GlassIconChip name="gift-outline" size={15} />
+          <Text style={[styles.section, { marginTop: 0, marginBottom: 0 }]}>
+            {t('userProfile.receivedGifts')}
+          </Text>
+        </View>
         {gifts.length === 0 ? (
           <Text style={{ color: colors.muted }}>{t('userProfile.noGifts')}</Text>
         ) : (
@@ -200,16 +215,22 @@ export default function UserProfile() {
         )}
 
         <View style={{ gap: spacing.md, marginTop: spacing.xl }}>
-          <NeonButton title={`💬 ${t('profile.sendMessage')}`} onPress={startChat} />
           <NeonButton
-            title={`🎁 ${t('profile.sendGift')}`}
+            title={t('profile.sendMessage')}
+            icon="chatbubble-outline"
+            onPress={startChat}
+          />
+          <NeonButton
+            title={t('profile.sendGift')}
+            icon="gift-outline"
             variant="gold"
             onPress={() =>
               router.push({ pathname: '/gift-picker', params: { userId: user.id } })
             }
           />
           <NeonButton
-            title={`🔄 ${t('transfer.title')}`}
+            title={t('transfer.title')}
+            icon="swap-horizontal-outline"
             variant="ghost"
             onPress={() =>
               router.push({
@@ -222,14 +243,20 @@ export default function UserProfile() {
 
         <GlowCard style={{ marginTop: spacing.lg, marginBottom: spacing.xl }}>
           <TouchableOpacity style={styles.row} onPress={toggleBlock}>
-            <Text style={{ color: colors.danger, fontSize: fonts.sizes.md }}>
-              🚫 {blocked ? t('userProfile.unblock') : t('userProfile.block')}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              <GlassIconChip name="ban-outline" size={14} danger />
+              <Text style={{ color: colors.danger, fontSize: fonts.sizes.md }}>
+                {blocked ? t('userProfile.unblock') : t('userProfile.block')}
+              </Text>
+            </View>
           </TouchableOpacity>
           <TouchableOpacity style={styles.row} onPress={report}>
-            <Text style={{ color: colors.text, fontSize: fonts.sizes.md }}>
-              ⚑ {t('userProfile.report')}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              <GlassIconChip name="flag-outline" size={14} />
+              <Text style={{ color: colors.text, fontSize: fonts.sizes.md }}>
+                {t('userProfile.report')}
+              </Text>
+            </View>
           </TouchableOpacity>
         </GlowCard>
       </ScrollView>
@@ -269,6 +296,14 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.text,
     fontSize: fonts.sizes.lg,
     fontWeight: fonts.weights.bold,
+    marginTop: spacing.xl,
+    marginBottom: spacing.md,
+  },
+  /** صف عنوان قسم: شريحة أيقونة زجاجية + العنوان */
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     marginTop: spacing.xl,
     marginBottom: spacing.md,
   },

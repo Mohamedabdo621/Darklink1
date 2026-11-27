@@ -10,7 +10,9 @@ import {
   View,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { Ionicons } from '@expo/vector-icons';
 import { GlowCard, NeonButton, Screen } from '../components/ui';
+import { GlassIconChip, type GlassIconName } from '../components/GlassIconButton';
 import { useAuth } from '../contexts/AuthContext';
 import { appAlert, appPrompt } from '../lib/dialog';
 import {
@@ -125,25 +127,31 @@ export default function Admin() {
   if (!me.is_admin) {
     return (
       <Screen>
-        <Text style={styles.title}>🚫 {t('admin.forbidden')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <GlassIconChip name="ban-outline" size={16} danger />
+          <Text style={styles.title}>{t('admin.forbidden')}</Text>
+        </View>
       </Screen>
     );
   }
 
-  const SECTIONS: { key: Section; label: string }[] = [
-    { key: 'overview', label: `📊 ${t('admin.overview')}` },
-    { key: 'orders', label: `💳 ${t('admin.orders')}` },
-    { key: 'users', label: `👥 ${t('admin.users')}` },
-    { key: 'reports', label: `🚨 ${t('admin.reports')}` },
-    { key: 'referrals', label: `🎁 ${t('admin.referrals')}` },
-    { key: 'postReports', label: `📝 ${t('admin.postReports')}` },
-    { key: 'promos', label: `🎟 ${t('admin.promos')}` },
-    { key: 'settings', label: `⚙️ ${t('admin.settings')}` },
+  const SECTIONS: { key: Section; label: string; icon: GlassIconName }[] = [
+    { key: 'overview', label: t('admin.overview'), icon: 'stats-chart-outline' },
+    { key: 'orders', label: t('admin.orders'), icon: 'card-outline' },
+    { key: 'users', label: t('admin.users'), icon: 'people-outline' },
+    { key: 'reports', label: t('admin.reports'), icon: 'warning-outline' },
+    { key: 'referrals', label: t('admin.referrals'), icon: 'gift-outline' },
+    { key: 'postReports', label: t('admin.postReports'), icon: 'document-text-outline' },
+    { key: 'promos', label: t('admin.promos'), icon: 'ticket-outline' },
+    { key: 'settings', label: t('admin.settings'), icon: 'settings-outline' },
   ];
 
   return (
     <Screen>
-      <Text style={styles.title}>🛠 {t('admin.title')}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+        <GlassIconChip name="construct-outline" size={16} />
+        <Text style={styles.title}>{t('admin.title')}</Text>
+      </View>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -154,14 +162,21 @@ export default function Admin() {
             key={s.key}
             onPress={() => setSection(s.key)}
             style={[styles.chip, section === s.key && styles.chipActive]}>
-            <Text
-              style={{
-                color: section === s.key ? colors.white : colors.text,
-                fontWeight: '700',
-                fontSize: fonts.sizes.sm,
-              }}>
-              {s.label}
-            </Text>
+            <View style={styles.chipContent}>
+              <Ionicons
+                name={s.icon}
+                size={15}
+                color={section === s.key ? colors.white : colors.primaryBright}
+              />
+              <Text
+                style={{
+                  color: section === s.key ? colors.white : colors.text,
+                  fontWeight: '700',
+                  fontSize: fonts.sizes.sm,
+                }}>
+                {s.label}
+              </Text>
+            </View>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -196,12 +211,13 @@ export default function Admin() {
               </GlowCard>
             </View>
             <NeonButton
-              title={`🏆 ${t('admin.awardContest')}`}
+              title={t('admin.awardContest')}
+              icon="trophy-outline"
               variant="gold"
               onPress={async () => {
                 const res = await awardContest();
                 if (res.ok) {
-                  appAlert('🏆', t('admin.awardDone', { prize: res.prize }));
+                  appAlert(t('admin.awardDone', { prize: res.prize }));
                 } else {
                   appAlert(t('common.error'), t(`admin.awardErr_${res.reason ?? 'error'}`));
                 }
@@ -271,7 +287,10 @@ export default function Admin() {
                           },
                         )
                       }>
-                      <Text style={styles.smallBtnText}>✕ {t('admin.reject')}</Text>
+                      <View style={styles.smallBtnContent}>
+                        <Ionicons name="close" size={15} color={colors.white} />
+                        <Text style={styles.smallBtnText}>{t('admin.reject')}</Text>
+                      </View>
                     </TouchableOpacity>
                   </View>
                 ) : null}
@@ -322,7 +341,10 @@ export default function Admin() {
                         },
                       )
                     }>
-                    <Text style={styles.smallBtnText}>💎 {t('admin.grant')}</Text>
+                    <View style={styles.smallBtnContent}>
+                      <Ionicons name="diamond-outline" size={15} color={colors.white} />
+                      <Text style={styles.smallBtnText}>{t('admin.grant')}</Text>
+                    </View>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[
@@ -448,14 +470,25 @@ export default function Admin() {
                   key={k}
                   onPress={() => setPKind(k)}
                   style={[styles.chip, pKind === k && styles.chipActive]}>
-                  <Text
-                    style={{
-                      color: pKind === k ? colors.white : colors.text,
-                      fontWeight: '700',
-                      fontSize: fonts.sizes.sm,
-                    }}>
-                    {k === 'gems' ? `💎 ${t('admin.promoGems')}` : `👑 ${t('admin.promoVip')}`}
-                  </Text>
+                  <View style={styles.chipContent}>
+                    {k === 'gems' ? (
+                      <Ionicons
+                        name="diamond-outline"
+                        size={15}
+                        color={pKind === k ? colors.white : colors.primaryBright}
+                      />
+                    ) : (
+                      <Text style={{ fontSize: 14 }}>👑</Text>
+                    )}
+                    <Text
+                      style={{
+                        color: pKind === k ? colors.white : colors.text,
+                        fontWeight: '700',
+                        fontSize: fonts.sizes.sm,
+                      }}>
+                      {k === 'gems' ? t('admin.promoGems') : t('admin.promoVip')}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               ))}
             </View>
@@ -573,6 +606,12 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 8,
   },
+  /** صف محتوى الشريحة: أيقونة + نص */
+  chipContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   stat: { width: '47%', alignItems: 'center' },
@@ -599,6 +638,13 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: radius.md,
     paddingVertical: 9,
     alignItems: 'center',
+  },
+  /** صف محتوى الزر الصغير: أيقونة + نص */
+  smallBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
   },
   smallBtnText: { color: colors.white, fontWeight: '700', fontSize: fonts.sizes.sm },
   input: {

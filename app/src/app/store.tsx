@@ -1,5 +1,6 @@
 import React, { useCallback, useState, useMemo } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { appAlert } from '../lib/dialog';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -109,7 +110,7 @@ export default function Store() {
         <View style={styles.grid}>
           {packages.map((pkg) => (
             <GlowCard key={pkg.id} style={styles.pkg}>
-              <Text style={{ fontSize: 30 }}>💎</Text>
+              <Ionicons name="diamond-outline" size={30} color={colors.primaryBright} />
               <Text style={styles.pkgGems}>{pkg.gems}</Text>
               <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
                 {t(`packages.${pkg.name_key}`)}

@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme';
@@ -98,7 +99,7 @@ export default function ChatMedia() {
               )}
               {item.type === 'video' ? (
                 <View style={styles.playBadge}>
-                  <Text style={{ fontSize: 22 }}>▶️</Text>
+                  <Ionicons name="play" size={22} color={colors.white} />
                 </View>
               ) : null}
             </TouchableOpacity>

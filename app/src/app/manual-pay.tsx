@@ -12,6 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { GlowCard, NeonButton, Screen } from '../components/ui';
+import { GlassIconChip } from '../components/GlassIconButton';
 import { appAlert } from '../lib/dialog';
 import { createPaymentOrder, fetchCashNumbers, uploadProof } from '../services/economy';
 import { fonts, radius, spacing } from '../theme';
@@ -101,7 +102,10 @@ export default function ManualPay() {
   return (
     <Screen>
       <ScrollView showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>💳 {t('store.manualPay')}</Text>
+      <View style={styles.titleRow}>
+        <GlassIconChip name="card-outline" size={16} />
+        <Text style={[styles.title, { marginVertical: 0 }]}>{t('store.manualPay')}</Text>
+      </View>
         <Text style={{ color: colors.muted, lineHeight: 21 }}>
           {t('store.manualPayDesc')}
         </Text>
@@ -111,9 +115,18 @@ export default function ManualPay() {
             {gemsNum} 💎 = {price} {t('common.egp')}
           </Text>
           {bonus > 0 ? (
-            <Text style={{ color: colors.gold, marginTop: 4, fontWeight: '700' }}>
-              🎁 +{bonus} {t('store.bonusNote', { pct: cash.bonusPct })}
-            </Text>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                marginTop: 4,
+              }}>
+              <GlassIconChip name="gift-outline" size={13} color={colors.gold} />
+              <Text style={{ color: colors.gold, fontWeight: '700' }}>
+                +{bonus} {t('store.bonusNote', { pct: cash.bonusPct })}
+              </Text>
+            </View>
           ) : null}
         </GlowCard>
 
@@ -192,6 +205,13 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.text,
     fontSize: fonts.sizes.xl,
     fontWeight: fonts.weights.bold,
+    marginVertical: spacing.md,
+  },
+  /** صف عنوان الصفحة: شريحة أيقونة زجاجية + العنوان */
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     marginVertical: spacing.md,
   },
   methodRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg },

@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import { giftImage } from '../lib/giftAssets';
@@ -80,7 +81,7 @@ export default function GiftsHistory() {
               {item.gift && giftImage(item.gift.asset) ? (
                 <Image source={giftImage(item.gift.asset)} style={styles.img} />
               ) : (
-                <Text style={{ fontSize: 30 }}>🎁</Text>
+                <Ionicons name="gift-outline" size={30} color={colors.accent} />
               )}
               <View style={{ flex: 1 }}>
                 <Text style={{ color: colors.text, fontSize: fonts.sizes.md }}>

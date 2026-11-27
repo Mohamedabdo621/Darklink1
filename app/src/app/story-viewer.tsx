@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
+  Animated,
   Image,
   Modal,
   Pressable,
@@ -18,6 +19,7 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Screen } from '../components/ui';
 import { Avatar } from '../components/Avatar';
+import { GlassIconButton } from '../components/GlassIconButton';
 import { formatTimeAr } from '../lib/format';
 import { useAuth } from '../contexts/AuthContext';
 import { appAlert } from '../lib/dialog';
@@ -41,6 +43,10 @@ import { fonts, gradients, radius, spacing } from '../theme';
 
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme';
+
+/** مدة القصة الواحدة — شريط التقدم بيمتلئ خلالها */
+const STORY_MS = 5000;
+
 /** عارض قصص مستخدم واحد: تقدم تلقائي + تنقل باللمس */
 export default function StoryViewer() {
   const { colors } = useTheme();
@@ -63,6 +69,11 @@ export default function StoryViewer() {
   const [stats, setStats] = useState<StoryStats | null>(null);
   const [sheet, setSheet] = useState<'none' | 'views' | 'comments'>('none');
   const viewedRef = useRef(new Set<string>());
+  // شريط التقدم المتحرك: القيمة الحالية (0→1) + آخر قيمة وصلها عند الإيقاف
+  const [barAnim] = useState(() => new Animated.Value(0));
+  const barValueRef = useRef(0);
+  // ضغطة مطولة على الستوري = إيقاف مؤقت (زي واتساب)
+  const [holding, setHolding] = useState(false);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -135,16 +146,36 @@ export default function StoryViewer() {
     };
   }, [current, me]);
 
-  // تقدم تلقائي كل ٥ ثوانٍ — بيتوقف وأنت بتكتب تعليق أو فاتح ورقة الإحصائيات
+  // شريط التقدم بيمتلئ 0→100% خلال مدة القصة، والانتقال للقصة اللي بعدها
+  // بيحصل لما الأنيميشن يخلص — فالإيقاف المؤقت (تعليق/ورقة/ضغطة مطولة)
+  // بيوقف الشريط والمؤقت مع بعض، والإفلات بيكمل من نفس النقطة
+  const paused = commentFocused || sheet !== 'none' || holding;
   useEffect(() => {
-    if (!stories.length) return;
-    if (commentFocused || sheet !== 'none') return;
-    const iv = setTimeout(() => {
+    // قصة جديدة = شريط من الصفر
+    barValueRef.current = 0;
+    barAnim.setValue(0);
+  }, [idx, barAnim]);
+  useEffect(() => {
+    if (!stories.length || !current) return;
+    if (paused) {
+      barAnim.stopAnimation((v) => {
+        barValueRef.current = v;
+      });
+      return;
+    }
+    const remaining = Math.max(200, (1 - barValueRef.current) * STORY_MS);
+    const anim = Animated.timing(barAnim, {
+      toValue: 1,
+      duration: remaining,
+      useNativeDriver: false,
+    });
+    anim.start(({ finished }) => {
+      if (!finished) return;
       if (idx < stories.length - 1) setIdx(idx + 1);
       else router.back();
-    }, 5000);
-    return () => clearTimeout(iv);
-  }, [idx, stories.length, commentFocused, sheet]);
+    });
+    return () => anim.stop();
+  }, [idx, paused, stories.length, current, barAnim]);
 
   if (!current) {
     return (
@@ -203,16 +234,27 @@ export default function StoryViewer() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      {/* أشرطة التقدم */}
+      {/* أشرطة التقدم — الحالية بتمتلئ مع الوقت، اللي فاتت ممتلئة، واللي جاية فاضية */}
       <View style={styles.bars}>
         {stories.map((s, i) => (
           <View key={s.id} style={styles.barTrack}>
-            <View
-              style={[
-                styles.barFill,
-                { width: i < idx ? '100%' : i === idx ? '55%' : '0%' },
-              ]}
-            />
+            {i < idx ? (
+              <View style={[styles.barFill, { width: '100%' }]} />
+            ) : i === idx ? (
+              <Animated.View
+                style={[
+                  styles.barFill,
+                  {
+                    width: barAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['0%', '100%'],
+                    }),
+                  },
+                ]}
+              />
+            ) : (
+              <View style={[styles.barFill, { width: '0%' }]} />
+            )}
           </View>
         ))}
       </View>
@@ -224,13 +266,9 @@ export default function StoryViewer() {
         </Text>
         <View style={{ flex: 1 }} />
         {mine ? (
-          <TouchableOpacity onPress={onDelete}>
-            <Text style={{ fontSize: 19 }}>🗑</Text>
-          </TouchableOpacity>
+          <GlassIconButton name="trash-outline" size={18} inverse danger onPress={onDelete} />
         ) : null}
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={{ color: colors.white, fontSize: 21 }}>✕</Text>
-        </TouchableOpacity>
+        <GlassIconButton name="close" size={20} inverse onPress={() => router.back()} />
       </View>
 
       {current.type === 'image' ? (
@@ -245,14 +283,27 @@ export default function StoryViewer() {
         </LinearGradient>
       )}
 
-      {/* مناطق اللمس للتنقل */}
+      {/* مناطق اللمس للتنقل — ضغطة سريعة يمين/شمال بتنقّل، وضغطة مطولة
+          في أي حتة بتوقف الستوري والشريط لحد ما تسيب إيدك (زي واتساب) */}
       <TouchableOpacity
         style={styles.tapStart}
+        activeOpacity={1}
         onPress={() => (idx > 0 ? setIdx(idx - 1) : null)}
+        onPressIn={() => setHolding(true)}
+        onPressOut={() => setHolding(false)}
+      />
+      <TouchableOpacity
+        style={styles.tapCenter}
+        activeOpacity={1}
+        onPressIn={() => setHolding(true)}
+        onPressOut={() => setHolding(false)}
       />
       <TouchableOpacity
         style={styles.tapEnd}
+        activeOpacity={1}
         onPress={() => (idx < stories.length - 1 ? setIdx(idx + 1) : router.back())}
+        onPressIn={() => setHolding(true)}
+        onPressOut={() => setHolding(false)}
       />
 
       {/* شريط التفاعل: قلب + تعليق (مشاهد) أو إحصائيات (مالك) */}
@@ -440,6 +491,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     lineHeight: 34,
   },
   tapStart: { position: 'absolute', start: 0, top: 110, bottom: 0, width: '35%' },
+  tapCenter: { position: 'absolute', left: '35%', right: '35%', top: 110, bottom: 0 },
   tapEnd: { position: 'absolute', end: 0, top: 110, bottom: 0, width: '35%' },
   /** شريط التفاعل السفلي — فوق مناطق اللمس (بيترسم بعدها) */
   bottomBarWrap: { position: 'absolute', start: 0, end: 0, bottom: 0 },

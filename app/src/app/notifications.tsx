@@ -3,6 +3,7 @@ import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Screen } from '../components/ui';
+import { GlassIconChip, type GlassIconName } from '../components/GlassIconButton';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import type { AppNotification } from '../lib/types';
@@ -12,14 +13,14 @@ import { fonts, spacing } from '../theme';
 
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme';
-const ICONS: Record<AppNotification['type'], string> = {
-  new_message: '💬',
-  voice_note: '🎤',
-  gift_received: '🎁',
-  purchase_success: '💎',
-  account: '👤',
-  security: '🛡',
-  app_update: '✨',
+const ICONS: Record<AppNotification['type'], GlassIconName> = {
+  new_message: 'chatbubble-outline',
+  voice_note: 'mic-outline',
+  gift_received: 'gift-outline',
+  purchase_success: 'diamond-outline',
+  account: 'person-outline',
+  security: 'shield-outline',
+  app_update: 'sparkles-outline',
 };
 
 export default function Notifications() {
@@ -176,7 +177,10 @@ export default function Notifications() {
           const ok = await requestNotificationPermission();
           if (ok && me) await registerPushToken(me.id);
         }}>
-        <Text style={styles.enableBtnText}>🔔 {t('notifications.enablePush')}</Text>
+        <View style={styles.enableBtnContent}>
+          <GlassIconChip name="notifications-outline" size={14} />
+          <Text style={styles.enableBtnText}>{t('notifications.enablePush')}</Text>
+        </View>
       </TouchableOpacity>
       <FlatList
         data={items}
@@ -186,7 +190,7 @@ export default function Notifications() {
         )}
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.row} onPress={() => open(item)}>
-            <Text style={{ fontSize: 24 }}>{ICONS[item.type]}</Text>
+            <GlassIconChip name={ICONS[item.type]} size={18} />
             <View style={{ flex: 1 }}>
               <Text
                 style={{
@@ -217,6 +221,12 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: 10,
     alignItems: 'center',
     marginBottom: spacing.md,
+  },
+  enableBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
   enableBtnText: { color: colors.text, fontWeight: '700', fontSize: fonts.sizes.sm },
   title: {

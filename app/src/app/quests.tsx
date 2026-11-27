@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { NeonButton, Screen } from '../components/ui';
+import { GlassIconChip } from '../components/GlassIconButton';
 import { appAlert } from '../lib/dialog';
 import { claimQuest, fetchQuests, type Quest } from '../services/economy';
 import { fonts, radius, spacing } from '../theme';
@@ -41,7 +42,10 @@ export default function Quests() {
   return (
     <Screen>
       <ScrollView showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>🎯 {t('quests.title')}</Text>
+      <View style={styles.titleRow}>
+        <GlassIconChip name="list-outline" size={16} />
+        <Text style={[styles.title, { marginVertical: 0 }]}>{t('quests.title')}</Text>
+      </View>
         <Text style={{ color: colors.muted, marginBottom: spacing.md }}>
           {t('quests.desc')}
         </Text>
@@ -96,6 +100,13 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.text,
     fontSize: fonts.sizes.xl,
     fontWeight: fonts.weights.bold,
+    marginVertical: spacing.md,
+  },
+  /** صف عنوان الصفحة: شريحة أيقونة زجاجية + العنوان */
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     marginVertical: spacing.md,
   },
   card: {

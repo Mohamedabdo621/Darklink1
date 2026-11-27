@@ -10,6 +10,7 @@ import {
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { GlowCard, Screen } from '../../components/ui';
+import { GlassIconChip, type GlassIconName } from '../../components/GlassIconButton';
 import { TabSwipe } from '../../components/TabSwipe';
 import { useAuth } from '../../contexts/AuthContext';
 import { appAlert } from '../../lib/dialog';
@@ -20,15 +21,15 @@ import { fonts, radius, spacing } from '../../theme';
 
 import { useTheme } from '../../contexts/ThemeContext';
 import type { ThemeColors } from '../../theme';
-const TX_ICON: Record<Transaction['type'], string> = {
-  purchase: '💎',
-  gift_sent: '🎁',
-  gift_received: '🎁',
-  bonus: '⭐',
-  refund: '↩️',
-  vip: '👑',
-  transfer_sent: '📤',
-  transfer_received: '📥',
+/** أيقونة كل نوع معاملة — VIP بيضل 👑 حسب قواعد الأيقونات */
+const TX_ICON: Record<Exclude<Transaction['type'], 'vip'>, GlassIconName> = {
+  purchase: 'diamond-outline',
+  gift_sent: 'gift-outline',
+  gift_received: 'gift-outline',
+  bonus: 'star-outline',
+  refund: 'return-up-back-outline',
+  transfer_sent: 'paper-plane-outline',
+  transfer_received: 'download-outline',
 };
 
 const TX_KEY: Record<Transaction['type'], string> = {
@@ -90,7 +91,6 @@ export default function WalletTab() {
     if (res.ok) {
       setPromoCode('');
       appAlert(
-        '🎟',
         res.kind === 'gems'
           ? t('wallet.promoGems', { value: res.value })
           : t('wallet.promoVip', { value: res.value }),
@@ -107,7 +107,10 @@ export default function WalletTab() {
       <Text style={styles.title}>{t('wallet.title')}</Text>
 
       <GlowCard style={styles.balanceCard}>
-        <Text style={{ color: colors.muted }}>💎 {t('wallet.balance')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <GlassIconChip name="diamond-outline" size={14} />
+          <Text style={{ color: colors.muted }}>{t('wallet.balance')}</Text>
+        </View>
         <Text style={styles.balance}>
           {balance}{' '}
           <Text style={{ fontSize: fonts.sizes.md, color: colors.primaryBright }}>
@@ -116,18 +119,27 @@ export default function WalletTab() {
         </Text>
         <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.md }}>
           <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/store')}>
-            <Text style={styles.actionText}>🛒 {t('wallet.buyGems')}</Text>
+            <View style={styles.btnContent}>
+              <GlassIconChip name="cart-outline" size={14} color={colors.white} />
+              <Text style={styles.actionText}>{t('wallet.buyGems')}</Text>
+            </View>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={() => router.push('/gifts-history')}>
-            <Text style={styles.actionText}>🎁 {t('wallet.giftsHistory')}</Text>
+            <View style={styles.btnContent}>
+              <GlassIconChip name="gift-outline" size={14} color={colors.white} />
+              <Text style={styles.actionText}>{t('wallet.giftsHistory')}</Text>
+            </View>
           </TouchableOpacity>
         </View>
         <TouchableOpacity
           style={[styles.actionBtn, { marginTop: spacing.md, backgroundColor: colors.card }]}
           onPress={() => router.push('/my-orders')}>
-          <Text style={styles.actionText}>🧾 {t('wallet.myOrders')}</Text>
+          <View style={styles.btnContent}>
+            <GlassIconChip name="receipt-outline" size={14} color={colors.white} />
+            <Text style={styles.actionText}>{t('wallet.myOrders')}</Text>
+          </View>
         </TouchableOpacity>
       </GlowCard>
 
@@ -141,9 +153,12 @@ export default function WalletTab() {
           autoCapitalize="characters"
         />
         <TouchableOpacity style={styles.promoBtn} onPress={onRedeem}>
-          <Text style={styles.actionText}>
-            {promoBusy ? '...' : `🎟 ${t('wallet.promoRedeem')}`}
-          </Text>
+          <View style={styles.btnContent}>
+            <GlassIconChip name="ticket-outline" size={14} />
+            <Text style={styles.actionText}>
+              {promoBusy ? '...' : t('wallet.promoRedeem')}
+            </Text>
+          </View>
         </TouchableOpacity>
       </View>
 
@@ -162,7 +177,13 @@ export default function WalletTab() {
         )}
         renderItem={({ item }) => (
           <View style={styles.txRow}>
-            <Text style={{ fontSize: 22 }}>{TX_ICON[item.type]}</Text>
+            {item.type === 'vip' ? (
+              <View style={styles.txIconWrap}>
+                <Text style={{ fontSize: 18 }}>👑</Text>
+              </View>
+            ) : (
+              <GlassIconChip name={TX_ICON[item.type]} size={18} />
+            )}
             <View style={{ flex: 1 }}>
               <Text style={{ color: colors.text, fontSize: fonts.sizes.md }}>
                 {t(TX_KEY[item.type])}
@@ -211,6 +232,24 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
   },
   actionText: { color: colors.white, fontWeight: '700', fontSize: fonts.sizes.sm },
+  /** صف محتوى الزر: أيقونة + نص */
+  btnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  /** حاوية أيقونة معاملة VIP (👑 بيضل إيموجي حسب قواعد الأيقونات) */
+  txIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: radius.sm,
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   section: {
     color: colors.text,
     fontSize: fonts.sizes.lg,

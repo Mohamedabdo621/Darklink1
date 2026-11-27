@@ -1,8 +1,10 @@
 import React, { useCallback, useState, useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { NeonButton, Screen } from '../components/ui';
+import { GlassIconChip } from '../components/GlassIconButton';
 import { Avatar } from '../components/Avatar';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchMyVisitors, type VisitRow } from '../services/features';
@@ -41,9 +43,12 @@ export default function ProfileVisitors() {
     <Screen>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
-          <Text style={{ color: colors.text, fontSize: 22 }}>‹</Text>
+          <Ionicons name="chevron-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>👀 {t('visitors.title')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <GlassIconChip name="eye-outline" size={15} />
+          <Text style={styles.title}>{t('visitors.title')}</Text>
+        </View>
         <View style={{ width: 22 }} />
       </View>
 

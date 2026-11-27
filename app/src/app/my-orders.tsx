@@ -3,6 +3,7 @@ import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Screen } from '../components/ui';
+import { GlassIconChip } from '../components/GlassIconButton';
 import { useAuth } from '../contexts/AuthContext';
 import type { PaymentOrder } from '../services/admin';
 import { fetchMyOrders } from '../services/economy';
@@ -36,7 +37,10 @@ export default function MyOrders() {
 
   return (
     <Screen>
-      <Text style={styles.title}>🧾 {t('orders.title')}</Text>
+      <View style={styles.titleRow}>
+        <GlassIconChip name="receipt-outline" size={16} />
+        <Text style={[styles.title, { marginVertical: 0 }]}>{t('orders.title')}</Text>
+      </View>
       <FlatList
         data={orders}
         keyExtractor={(o) => o.id}
@@ -82,6 +86,13 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.text,
     fontSize: fonts.sizes.xl,
     fontWeight: fonts.weights.bold,
+    marginVertical: spacing.md,
+  },
+  /** صف عنوان الصفحة: شريحة أيقونة زجاجية + العنوان */
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     marginVertical: spacing.md,
   },
   empty: { color: colors.muted, textAlign: 'center', marginTop: spacing.xl },

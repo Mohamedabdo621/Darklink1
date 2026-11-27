@@ -101,7 +101,7 @@ export default function Home() {
     const fresh = await checkAchievements();
     if (fresh.length) {
       appAlert(
-        '🏆 ' + t('achievements.unlocked'),
+        t('achievements.unlocked'),
         fresh.map((k) => '• ' + t(`achievements.${k}`)).join('\n'),
       );
     }
@@ -113,7 +113,7 @@ export default function Home() {
     setClaiming(false);
     if (res?.claimed) {
       appAlert(
-        '🎁 ' + t('home.dailyTitle'),
+        t('home.dailyTitle'),
         `${t('home.dailyGot')} ${res.amount} 💎 — ${res.streak} ${t('home.streakDays')}`,
       );
       load();

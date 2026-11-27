@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
-import { FlatList, Image, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { appAlert } from '../lib/dialog';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -124,9 +125,17 @@ export default function GiftPicker() {
                 {t(`gifts.${item.name_key}`)}
               </Text>
               {item.seasonal ? (
-                <Text style={{ color: colors.gold, fontSize: 10 }}>
-                  ✨ {t('giftPicker.seasonal')}
-                </Text>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 3,
+                  }}>
+                  <Ionicons name="sparkles-outline" size={10} color={colors.gold} />
+                  <Text style={{ color: colors.gold, fontSize: 10 }}>
+                    {t('giftPicker.seasonal')}
+                  </Text>
+                </View>
               ) : null}
               <Text style={{ color: colors.primaryBright, fontSize: fonts.sizes.xs }}>
                 {busyId === item.id ? '...' : `${item.price_gems} 💎`}

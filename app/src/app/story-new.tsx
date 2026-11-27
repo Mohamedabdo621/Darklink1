@@ -69,7 +69,8 @@ export default function StoryNew() {
 
       <View style={{ height: spacing.lg }} />
       <NeonButton
-        title={`🖼 ${t('stories.imageStory')}`}
+        title={t('stories.imageStory')}
+        icon="image-outline"
         onPress={postImage}
         loading={busy}
         variant="ghost"

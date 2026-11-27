@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { Animated, FlatList, Image, Keyboard, Modal, PanResponder, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Animated, FlatList, Image, Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
@@ -19,6 +19,7 @@ import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import VoiceBubble from '../../components/VoiceBubble';
 import GiftAnimation from '../../components/GiftAnimation';
+import { GlassIconButton, GlassIconChip } from '../../components/GlassIconButton';
 import { Avatar } from '../../components/Avatar';
 import { formatTimeAr } from '../../lib/format';
 import { useAuth } from '../../contexts/AuthContext';
@@ -68,6 +69,13 @@ interface GiftInfo {
   asset: string;
 }
 
+/** عتبات السحب المرنة للتسجيل الصوتي (واتساب: أي سحب واضح + إفلات = إلغاء/قفل،
+ *  مش لازم توصل لمكان معين) */
+const REC_CANCEL_DX = -28;
+const REC_LOCK_DY = -28;
+/** ضغطة أقصر من كده تتجاهل خالص (مش تسجيل — زي واتساب) */
+const REC_TAP_MS = 150;
+
 export default function ChatScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -111,11 +119,17 @@ export default function ChatScreen() {
   const lastTypingSent = useRef(0);
 
   // ---- التسجيل الصوتي (ستايل واتساب: ضغط مطول، إفلات للإرسال،
-  // سحب لليسار للإلغاء، سحب لأعلى للقفل)
+  // سحب حر لليسار للإلغاء، سحب حر لأعلى للقفل — من غير هدف معين)
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recState = useAudioRecorderState(recorder, 250);
   const [phase, setPhase] = useState<'idle' | 'recording' | 'locked'>('idle');
   const [recDrag, setRecDrag] = useState({ dx: 0, dy: 0 });
+  /** جلسة التسجيل الحالية — بتمنع استدعاء record() المتأخر لو الإصبع
+   *  اترفع بسرعة قبل ما التجهيز يخلص (فكانت بتسيب تسجيل شبح شغال) */
+  const recSessionRef = useRef(0);
+  const recPressAtRef = useRef(0);
+  /** موضع الإصبع لحظة الضغط — منه بيتحسب السحب (pageX/pageY) */
+  const recStartPosRef = useRef({ x: 0, y: 0 });
 
   const failSend = () => appAlert(t('common.error'), t('chat.blockedNotice'));
 
@@ -136,14 +150,20 @@ export default function ChatScreen() {
 
   const startRecording = async () => {
     if (recorder.isRecording) return;
+    // جلسة البدء دي — لو الإصبع اترفع قبل ما التجهيز يخلص، الإفلات
+    // بيزوّد العداد فالسلسلة دي بتتوقف قبل ما تنادي record()
+    const session = recSessionRef.current;
     const status = await AudioModule.requestRecordingPermissionsAsync();
     if (!status.granted) {
       appAlert(t('common.error'), t('chat.micDenied'));
       return;
     }
+    if (recSessionRef.current !== session) return;
     Keyboard.dismiss();
     await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
+    if (recSessionRef.current !== session) return;
     await recorder.prepareToRecordAsync();
+    if (recSessionRef.current !== session) return;
     recorder.record();
     setPhase('recording');
   };
@@ -212,6 +232,7 @@ export default function ChatScreen() {
   };
 
   const cancelRecording = async () => {
+    recSessionRef.current += 1;
     if (recorder.isRecording) {
       try {
         await recorder.stop();
@@ -242,11 +263,17 @@ export default function ChatScreen() {
     transform: [{ scaleX: i18n.language === 'ar' ? -1 : 1 }],
   };
 
-  /** إيماءة التسجيل: ضغط مطول يبدأ، سحب لليسار يلغي، سحب لأعلى يقفل،
-   *  والإفلات يبعت (بيقرأ الـ dx/dy النهائية مباشرة) — شغالة على
-   *  الموبايل والويب. الـ PanResponder بيتعمل من جديد في كل render
-   *  فالـ handlers دايمًا fresh. */
-  const recGrant = () => {
+  /** إيماءة التسجيل (نفس نظام PanResponder بس بخواص responder مباشرة على
+   *  الزر — فالـ handlers بتوعها event handlers عادية: مسموح فيها قراءة
+   *  الـ refs وDate.now. ضغطة مطولة بتبدأ، الشريط بيمشي مع الإصبع لحظيًا،
+   *  والإفلات بعد أي سحب واضح لليسار بيلغي (من غير هدف معين) وبعد أي
+   *  سحب واضح لفوق بيقفل، والإفلات العادي بيبعت. ضغطة أقصر من 150ms
+   *  بتتجاهل خالص (مش فويس). شغالة على الموبايل والويب. */
+  const recGrant = (e: GestureResponderEvent) => {
+    // جلسة جديدة: أي سلسلة تجهيز قديمة لسه شغالة بتتوقف
+    recSessionRef.current += 1;
+    recPressAtRef.current = Date.now();
+    recStartPosRef.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY };
     // ضغطة والمايك بيسجّل أصلًا (التسجيل بدأ والإصبع اترفع بسرعة قبل
     // ما التجهيز يخلص) — وقّف وابعت اللي اتسجّل
     if (phase === 'recording') {
@@ -256,31 +283,38 @@ export default function ChatScreen() {
     setRecDrag({ dx: 0, dy: 0 });
     void startRecording();
   };
-  const recMove = (_e: unknown, gs: { dx: number; dy: number }) => {
-    setRecDrag({ dx: Math.min(0, gs.dx), dy: Math.min(0, gs.dy) });
+  const recMove = (e: GestureResponderEvent) => {
+    setRecDrag({
+      dx: Math.min(0, e.nativeEvent.pageX - recStartPosRef.current.x),
+      dy: Math.min(0, e.nativeEvent.pageY - recStartPosRef.current.y),
+    });
   };
-  const recRelease = (_e: unknown, gs: { dx: number; dy: number }) => {
-    if (gs.dx <= -70) {
+  const recRelease = (e: GestureResponderEvent) => {
+    // الإفلات بيلغي جلسة البدء — أي record() متأخر مش هيتنفذ
+    recSessionRef.current += 1;
+    // ضغطة سريعة (أقل من 150ms): مش تسجيل أصلًا — تجاهل من غير ما تبعت
+    if (Date.now() - recPressAtRef.current < REC_TAP_MS) {
       void cancelRecording();
       return;
     }
-    if (gs.dy <= -70) {
+    // سحب حر: أي سحب واضح لليسار + إفلات = إلغاء، من غير مكان معين
+    const dx = Math.min(0, e.nativeEvent.pageX - recStartPosRef.current.x);
+    const dy = Math.min(0, e.nativeEvent.pageY - recStartPosRef.current.y);
+    if (dx <= REC_CANCEL_DX) {
+      void cancelRecording();
+      return;
+    }
+    // سحب حر: أي سحب واضح لفوق + إفلات = قفل حر
+    if (dy <= REC_LOCK_DY) {
       lockRecording();
       return;
     }
     void stopAndSendRecording();
   };
   const recTerminate = () => {
+    recSessionRef.current += 1;
     void cancelRecording();
   };
-  const recPanResponder = PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: recGrant,
-    onPanResponderMove: recMove,
-    onPanResponderRelease: recRelease,
-    onPanResponderTerminate: recTerminate,
-  });
   const listRef = useRef<FlatList<Message | OutboxItem>>(null);
 
   const loadGiftInfo = useCallback(async (msgs: Message[]) => {
@@ -371,7 +405,7 @@ export default function ChatScreen() {
   const prevRecZoneRef = useRef<'none' | 'cancel' | 'lock'>('none');
   useEffect(() => {
     const zone =
-      recDrag.dx <= -70 ? 'cancel' : recDrag.dy <= -70 ? 'lock' : 'none';
+      recDrag.dx <= REC_CANCEL_DX ? 'cancel' : recDrag.dy <= REC_LOCK_DY ? 'lock' : 'none';
     if (zone !== prevRecZoneRef.current) {
       prevRecZoneRef.current = zone;
       if (zone !== 'none') Haptics.selectionAsync().catch(() => {});
@@ -799,7 +833,7 @@ export default function ChatScreen() {
     }
     if (await blockUser(me.id, otherId)) {
       setBlockedByMe(true);
-      appAlert('🚫', t('userProfile.blocked'));
+      appAlert(t('userProfile.blocked'));
     }
   };
 
@@ -841,7 +875,7 @@ export default function ChatScreen() {
           وخلفية الهيدر بتملى المساحة دي فمفيش فراغ فوقه */}
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={{ color: colors.text, fontSize: 20 }}>‹</Text>
+          <Ionicons name="chevron-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <TouchableOpacity
           style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 }}
@@ -867,15 +901,16 @@ export default function ChatScreen() {
             ) : null}
           </View>
         </TouchableOpacity>
-        <TouchableOpacity
+        <GlassIconButton
+          name="gift-outline"
+          size={20}
           onPress={() =>
             otherId &&
             router.push({ pathname: '/gift-picker', params: { userId: otherId } })
-          }>
-          <Text style={{ fontSize: 22 }}>🎁</Text>
-        </TouchableOpacity>
+          }
+        />
         <TouchableOpacity onPress={() => setMenuOpen(true)} style={styles.menuBtn}>
-          <Text style={{ color: colors.text, fontSize: 20, fontWeight: '700' }}>⋮</Text>
+          <Ionicons name="ellipsis-vertical" size={22} color={colors.text} />
         </TouchableOpacity>
       </View>
 
@@ -997,9 +1032,7 @@ export default function ChatScreen() {
               {snippetFor(replyTo)}
             </Text>
           </View>
-          <TouchableOpacity onPress={() => setReplyTo(null)} hitSlop={8}>
-            <Text style={{ color: colors.muted, fontSize: 17 }}>✕</Text>
-          </TouchableOpacity>
+          <GlassIconButton name="close" size={15} circular onPress={() => setReplyTo(null)} />
         </View>
       ) : null}
 
@@ -1027,20 +1060,25 @@ export default function ChatScreen() {
         <>
           {editing ? (
             <View style={styles.editBar}>
-              <Text style={styles.editBarText}>✏️ {t('chat.editMessage')}</Text>
-              <TouchableOpacity
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                <GlassIconChip name="pencil-outline" size={15} />
+                <Text style={styles.editBarText}>{t('chat.editMessage')}</Text>
+              </View>
+              <GlassIconButton
+                name="close"
+                size={15}
+                circular
                 onPress={() => {
                   setEditing(null);
                   setEditText('');
                 }}
-                hitSlop={8}>
-                <Text style={{ color: colors.muted, fontSize: 17 }}>✕</Text>
-              </TouchableOpacity>
+              />
             </View>
           ) : null}
           {!online ? (
             <View style={styles.offlineBar}>
-              <Text style={styles.offlineBarText}>📶 {t('chat.offlineNotice')}</Text>
+              <Ionicons name="cloud-offline-outline" size={15} color="#fdba74" />
+              <Text style={styles.offlineBarText}>{t('chat.offlineNotice')}</Text>
             </View>
           ) : null}
           {emojiOpen ? (
@@ -1053,20 +1091,65 @@ export default function ChatScreen() {
             </View>
           ) : null}
           <View style={styles.composer}>
+            {/* أيقونة السلة بتظهر وتكبر كل ما السحب لليسار يقرّب من الإلغاء */}
+            {phase === 'recording' && recDrag.dx < -10 ? (
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.recCancelIcon,
+                  {
+                    opacity: Math.min(1, -recDrag.dx / -REC_CANCEL_DX),
+                    transform: [
+                      { scale: 1 + Math.min(1, -recDrag.dx / 60) * 0.3 },
+                    ],
+                  },
+                ]}>
+                <Ionicons name="trash-outline" size={26} color={colors.danger} />
+              </View>
+            ) : null}
+            {/* أيقونة القفل بتتملي تدريجيًا كل ما السحب لفوق يقرّب من القفل */}
+            {phase === 'recording' && recDrag.dy < -10 ? (
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.recLockIcon,
+                  {
+                    opacity: Math.min(1, -recDrag.dy / -REC_LOCK_DY),
+                    transform: [
+                      { scale: 1 + Math.min(1, -recDrag.dy / 60) * 0.25 },
+                    ],
+                  },
+                ]}>
+                <Ionicons
+                  name={-recDrag.dy > 40 ? 'lock-closed' : 'lock-open-outline'}
+                  size={26}
+                  color={colors.primaryBright}
+                />
+              </View>
+            ) : null}
             <View style={styles.inputWrap}>
               {phase === 'recording' ? (
-                <View style={styles.recIndicator}>
+                <View
+                  style={[
+                    styles.recIndicator,
+                    {
+                      transform: [
+                        { translateX: recDrag.dx },
+                        { translateY: recDrag.dy },
+                      ],
+                    },
+                  ]}>
                   <PulseDot />
                   <Text style={styles.recTimer}>{recSeconds()}</Text>
                   <Text
                     style={[
                       styles.recHint,
-                      recDrag.dx <= -70 && { color: colors.danger },
+                      recDrag.dx <= REC_CANCEL_DX && { color: colors.danger },
                     ]}
                     numberOfLines={1}>
-                    {recDrag.dx <= -70
+                    {recDrag.dx <= REC_CANCEL_DX
                       ? t('chat.releaseToCancel')
-                      : recDrag.dy <= -70
+                      : recDrag.dy <= REC_LOCK_DY
                         ? t('chat.releaseToLock')
                         : t('chat.recHint')}
                   </Text>
@@ -1100,7 +1183,14 @@ export default function ChatScreen() {
                 <Ionicons name="send" size={18} color={colors.white} style={sendFlip} />
               </TouchableOpacity>
             ) : (
-              <View {...recPanResponder.panHandlers} style={{ padding: 4, margin: -4 }}>
+              <View
+                onStartShouldSetResponder={() => true}
+                onMoveShouldSetResponder={() => true}
+                onResponderGrant={recGrant}
+                onResponderMove={recMove}
+                onResponderRelease={recRelease}
+                onResponderTerminate={recTerminate}
+                style={{ padding: 4, margin: -4 }}>
                 <View
                   style={[
                     styles.sendBtn,
@@ -1149,7 +1239,8 @@ export default function ChatScreen() {
                   startReply(actionMsg);
                   setActionMsg(null);
                 }}>
-                <Text style={styles.sheetRowText}>↩ {t('chat.reply')}</Text>
+                <GlassIconChip name="return-up-back-outline" />
+                <Text style={styles.sheetRowText}>{t('chat.reply')}</Text>
               </TouchableOpacity>
             ) : null}
             {actionMsg && actionMsg.sender_id === me.id && !actionMsg.is_deleted ? (
@@ -1159,15 +1250,17 @@ export default function ChatScreen() {
                   setActionMsg(null);
                   startEdit(actionMsg);
                 }}>
-                <Text style={styles.sheetRowText}>✏️ {t('chat.editMessage')}</Text>
+                <GlassIconChip name="pencil-outline" />
+                <Text style={styles.sheetRowText}>{t('chat.editMessage')}</Text>
               </TouchableOpacity>
             ) : null}
             {actionMsg && actionMsg.sender_id === me.id && !actionMsg.is_deleted ? (
               <TouchableOpacity
                 style={styles.sheetRow}
                 onPress={() => sheetDelete(actionMsg)}>
+                <GlassIconChip name="trash-outline" danger />
                 <Text style={[styles.sheetRowText, { color: colors.danger }]}>
-                  🗑 {t('chat.deleteMessage')}
+                  {t('chat.deleteMessage')}
                 </Text>
               </TouchableOpacity>
             ) : null}
@@ -1175,7 +1268,8 @@ export default function ChatScreen() {
               <TouchableOpacity
                 style={styles.sheetRow}
                 onPress={() => sheetReport(actionMsg)}>
-                <Text style={styles.sheetRowText}>🚩 {t('chat.reportMessage')}</Text>
+                <GlassIconChip name="flag-outline" />
+                <Text style={styles.sheetRowText}>{t('chat.reportMessage')}</Text>
               </TouchableOpacity>
             ) : null}
             <TouchableOpacity
@@ -1206,11 +1300,13 @@ export default function ChatScreen() {
                   params: { conversationId },
                 });
               }}>
-              <Text style={styles.sheetRowText}>🖼 {t('chat.menuMedia')}</Text>
+              <GlassIconChip name="image-outline" />
+              <Text style={styles.sheetRowText}>{t('chat.menuMedia')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.sheetRow} onPress={onToggleMute}>
+              <GlassIconChip name={muted ? 'volume-high-outline' : 'volume-mute-outline'} />
               <Text style={styles.sheetRowText}>
-                {muted ? `🔔 ${t('chat.menuUnmute')}` : `🔕 ${t('chat.menuMute')}`}
+                {muted ? t('chat.menuUnmute') : t('chat.menuMute')}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -1224,16 +1320,22 @@ export default function ChatScreen() {
                   });
                 }
               }}>
-              <Text style={styles.sheetRowText}>🎁 {t('chat.menuGift')}</Text>
+              <GlassIconChip name="gift-outline" />
+              <Text style={styles.sheetRowText}>{t('chat.menuGift')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.sheetRow} onPress={onBlockToggle}>
+              <GlassIconChip
+                name={blockedByMe ? 'checkmark-outline' : 'ban-outline'}
+                danger={!blockedByMe}
+              />
               <Text style={[styles.sheetRowText, { color: colors.danger }]}>
-                {blockedByMe ? `✓ ${t('chat.menuUnblock')}` : `🚫 ${t('chat.menuBlock')}`}
+                {blockedByMe ? t('chat.menuUnblock') : t('chat.menuBlock')}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.sheetRow} onPress={onReportUser}>
+              <GlassIconChip name="flag-outline" danger />
               <Text style={[styles.sheetRowText, { color: colors.danger }]}>
-                🚩 {t('chat.menuReport')}
+                {t('chat.menuReport')}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -1369,7 +1471,7 @@ function MessageBubble({
         ) : m.type === 'image' ? (
           dataSaver && !forceLoad ? (
             <TouchableOpacity onPress={onLoadMedia} style={styles.tapToLoad}>
-              <Text style={{ fontSize: 30 }}>🖼</Text>
+              <Ionicons name="image-outline" size={30} color={colors.muted} />
               <Text style={styles.tapToLoadText}>↓ {t('chat.tapToLoad')}</Text>
             </TouchableOpacity>
           ) : mediaUrl ? (
@@ -1377,12 +1479,15 @@ function MessageBubble({
               <Image source={{ uri: mediaUrl }} style={styles.mediaImg} resizeMode="cover" />
             </TouchableOpacity>
           ) : (
-            <Text style={styles.msgText}>🖼 …</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="image-outline" size={18} color={colors.muted} />
+              <Text style={styles.msgText}>…</Text>
+            </View>
           )
         ) : m.type === 'video' ? (
           <TouchableOpacity onPress={() => mediaUrl && onMediaPress(mediaUrl, 'video')}>
             <View style={[styles.mediaImg, styles.videoTile]}>
-              <Text style={{ fontSize: 40 }}>▶️</Text>
+              <Ionicons name="play" size={40} color={colors.white} />
               <Text style={{ color: colors.white, fontSize: fonts.sizes.xs }}>
                 {t('chats.video')}
               </Text>
@@ -1396,7 +1501,7 @@ function MessageBubble({
               {gift && giftImage(gift.asset) ? (
                 <Image source={giftImage(gift.asset)} style={styles.giftImg} />
               ) : (
-                <Text style={{ fontSize: 40 }}>🎁</Text>
+                <Ionicons name="gift-outline" size={40} color={colors.accent} />
               )}
               <Text style={[styles.msgText, mine && { color: colors.white }]}>
                 {gift ? t(`gifts.${gift.name_key}`) : t('chats.gift')}
@@ -1434,12 +1539,13 @@ function PendingBubble({ item }: { item: OutboxItem }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
+  const isMedia = item.type === 'image' || item.type === 'video';
   const label =
     item.type === 'text'
       ? item.body ?? ''
       : item.type === 'voice'
         ? t('chat.voiceNote')
-        : `🖼 ${t('chat.sending')}`;
+        : t('chat.sending');
   return (
     <View
       style={{
@@ -1449,10 +1555,27 @@ function PendingBubble({ item }: { item: OutboxItem }) {
         opacity: 0.65,
       }}>
       <View style={[styles.bubble, styles.bubbleMine]}>
-        <Text style={[styles.msgText, { color: colors.white }]}>{label}</Text>
-        <Text style={[styles.time, { color: 'rgba(255,255,255,0.7)' }]}>
-          🕐 {t('chat.sending')}
-        </Text>
+        {isMedia ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Ionicons name="image-outline" size={16} color={colors.white} />
+            <Text style={[styles.msgText, { color: colors.white }]}>{label}</Text>
+          </View>
+        ) : (
+          <Text style={[styles.msgText, { color: colors.white }]}>{label}</Text>
+        )}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: 3,
+            marginTop: 3,
+          }}>
+          <Ionicons name="time-outline" size={11} color="rgba(255,255,255,0.7)" />
+          <Text style={[styles.time, { color: 'rgba(255,255,255,0.7)', marginTop: 0 }]}>
+            {t('chat.sending')}
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -1526,7 +1649,12 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.card,
   },
   emojiBtnActive: { borderWidth: 1.5, borderColor: colors.accent },
-  sheetRow: { paddingVertical: 13 },
+  sheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 13,
+  },
   sheetRowText: { color: colors.text, fontSize: fonts.sizes.md, textAlign: 'left' },
   replyAction: {
     width: 52,
@@ -1571,12 +1699,19 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  bubbleMine: { backgroundColor: colors.primary, borderBottomEndRadius: 4 },
-  bubbleOther: {
-    backgroundColor: colors.surfaceLight,
+  /** المرسلة: هوية بنفسجية + حد زجاجي أبيض خفيف وذيل مدوّر ناعم */
+  bubbleMine: {
+    backgroundColor: colors.primary,
     borderWidth: 1,
-    borderColor: colors.stroke,
-    borderBottomStartRadius: 4,
+    borderColor: 'rgba(255,255,255,0.28)',
+    borderBottomEndRadius: 6,
+  },
+  /** المستلمة: زجاجية شفافة بحد زجاجي وذيل مدوّر ناعم — نفس لغة التطبيق */
+  bubbleOther: {
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderBottomStartRadius: 6,
   },
   msgText: { color: colors.text, fontSize: fonts.sizes.md, lineHeight: 22 },
   deleted: { color: colors.faint, fontStyle: 'italic', fontSize: fonts.sizes.sm },
@@ -1619,15 +1754,15 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: fonts.sizes.md,
     textAlign: 'left',
   },
-  /** حقل الكتابة الدائري: إيموجي يمين، كاميرا ومرفق جواه */
+  /** حقل الكتابة الدائري: زجاجي شفاف بلمسة بنفسجي — نفس لغة التطبيق */
   inputWrap: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.glass,
     borderWidth: 1,
-    borderColor: colors.stroke,
+    borderColor: colors.glassBorder,
     borderRadius: radius.full,
     paddingHorizontal: spacing.md,
   },
@@ -1659,7 +1794,10 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   offlineBar: {
     backgroundColor: '#451a03',
     paddingVertical: 6,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
   offlineBarText: { color: '#fdba74', fontSize: fonts.sizes.xs },
   /** صف الإيموجي السريع فوق لوحة الكتابة */
@@ -1709,6 +1847,21 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   recHint: { color: colors.muted, fontSize: fonts.sizes.sm, flex: 1 },
+  /** أيقونة السلة اللي بتظهر على الشمال كل ما السحب يقرّب من الإلغاء */
+  recCancelIcon: {
+    position: 'absolute',
+    left: spacing.md,
+    top: '50%',
+    marginTop: -13,
+    zIndex: 1,
+  },
+  /** أيقونة القفل اللي بتظهر فوق زرار المايك كل ما السحب لفوق يقرّب من القفل */
+  recLockIcon: {
+    position: 'absolute',
+    right: spacing.md,
+    bottom: 62,
+    zIndex: 1,
+  },
   blockedBar: {
     padding: spacing.md,
     alignItems: 'center',

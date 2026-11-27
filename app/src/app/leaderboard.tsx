@@ -1,8 +1,10 @@
 import React, { useCallback, useState, useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Screen } from '../components/ui';
+import { GlassIconChip } from '../components/GlassIconButton';
 import { Avatar } from '../components/Avatar';
 import { fetchLeaderboard, type LeaderRow } from '../services/features';
 import { avatarSignedUrl } from '../services/profile';
@@ -44,9 +46,12 @@ export default function Leaderboard() {
     <Screen>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
-          <Text style={{ color: colors.text, fontSize: 22 }}>‹</Text>
+          <Ionicons name="chevron-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>🏆 {t('leaderboard.title')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <GlassIconChip name="trophy-outline" size={15} color={colors.gold} />
+          <Text style={styles.title}>{t('leaderboard.title')}</Text>
+        </View>
         <View style={{ width: 22 }} />
       </View>
       <Text style={styles.note}>{t('leaderboard.weekNote')}</Text>
@@ -87,9 +92,12 @@ export default function Leaderboard() {
                   {r.profile?.shown_name ?? '—'}
                   {r.profile?.is_vip ? ' 👑' : ''}
                 </Text>
-                <Text style={styles.sub}>
-                  🎁 {r.gifts} — {r.total} {t('common.gems')}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <GlassIconChip name="gift-outline" size={12} />
+                  <Text style={styles.sub}>
+                    {r.gifts} — {r.total} {t('common.gems')}
+                  </Text>
+                </View>
               </View>
             </TouchableOpacity>
           ))

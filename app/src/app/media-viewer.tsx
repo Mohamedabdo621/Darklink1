@@ -1,16 +1,15 @@
 import React from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { GlassIconButton } from '../components/GlassIconButton';
 import { spacing } from '../theme';
 import { downloadMedia, fileNameFromPath } from '../lib/mediaDownload';
 import { appAlert } from '../lib/dialog';
 
-import { useTheme } from '../contexts/ThemeContext';
 /** عارض وسائط بملء الشاشة داخل التطبيق (صورة أو فيديو) */
 export default function MediaViewer() {
-  const { colors } = useTheme();
   const { t } = useTranslation();
   const { url, type } = useLocalSearchParams<{ url: string; type: string }>();
   const player = useVideoPlayer(type === 'video' ? (url ?? null) : null, (p) => {
@@ -29,12 +28,22 @@ export default function MediaViewer() {
 
   return (
     <View style={styles.root}>
-      <TouchableOpacity style={styles.close} onPress={() => router.back()}>
-        <Text style={{ color: colors.white, fontSize: 22 }}>✕</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.download} onPress={onDownload}>
-        <Text style={{ color: colors.white, fontSize: 20 }}>⬇</Text>
-      </TouchableOpacity>
+      <GlassIconButton
+        name="close"
+        size={20}
+        inverse
+        circular
+        onPress={() => router.back()}
+        style={styles.close}
+      />
+      <GlassIconButton
+        name="download-outline"
+        size={22}
+        inverse
+        circular
+        onPress={onDownload}
+        style={styles.download}
+      />
       {type === 'video' ? (
         <VideoView
           player={player}
@@ -57,23 +66,11 @@ const styles = StyleSheet.create({
     top: 48,
     end: spacing.md,
     zIndex: 10,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   download: {
     position: 'absolute',
     bottom: 40,
     alignSelf: 'center',
     zIndex: 10,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

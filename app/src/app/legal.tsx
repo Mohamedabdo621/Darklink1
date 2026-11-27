@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../components/ui';
 import { fonts, spacing } from '../theme';
 
@@ -40,7 +41,9 @@ export default function Legal() {
   return (
     <Screen>
       <ScrollView showsVerticalScrollIndicator={false}>
-        <Text style={styles.h}>📄</Text>
+        <View style={{ alignItems: 'center', marginVertical: spacing.md }}>
+          <Ionicons name="document-text-outline" size={48} color={colors.muted} />
+        </View>
         <Text style={styles.body}>{ar ? PRIVACY_AR : PRIVACY_EN}</Text>
       </ScrollView>
     </Screen>
@@ -48,7 +51,6 @@ export default function Legal() {
 }
 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  h: { fontSize: 30, marginVertical: spacing.md },
   body: {
     color: colors.text,
     fontSize: fonts.sizes.md,

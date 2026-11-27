@@ -3,6 +3,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { GlowCard, NeonButton, Screen } from '../components/ui';
+import { GlassIconChip } from '../components/GlassIconButton';
 import { appAlert } from '../lib/dialog';
 import {
   fetchTransferQuote,
@@ -48,7 +49,7 @@ export default function Transfer() {
   const send = () => {
     if (!userId || !shownQuote) return;
     appAlert(
-      `🔄 ${t('transfer.title')}`,
+      t('transfer.title'),
       t('transfer.confirm', {
         amount,
         fee: shownQuote.fee,
@@ -87,7 +88,10 @@ export default function Transfer() {
 
   return (
     <Screen>
-      <Text style={styles.title}>🔄 {t('transfer.title')}</Text>
+      <View style={styles.titleRow}>
+        <GlassIconChip name="swap-horizontal-outline" size={16} />
+        <Text style={[styles.title, { marginVertical: 0 }]}>{t('transfer.title')}</Text>
+      </View>
       <Text style={{ color: colors.muted }}>
         {t('transfer.toUser', { name: name ?? '' })} • 💎 {balance}
       </Text>
@@ -141,6 +145,13 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.text,
     fontSize: fonts.sizes.xl,
     fontWeight: fonts.weights.bold,
+    marginVertical: spacing.md,
+  },
+  /** صف عنوان الصفحة: شريحة أيقونة زجاجية + العنوان */
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     marginVertical: spacing.md,
   },
   label: {

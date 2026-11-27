@@ -239,7 +239,7 @@ export default function PostCard({
           <TouchableOpacity
             style={styles.tapToLoad}
             onPress={() => setImgLoaded(true)}>
-            <Text style={{ fontSize: 30 }}>🖼</Text>
+            <Ionicons name="image-outline" size={30} color={colors.muted} />
             <Text style={styles.tapToLoadText}>↓ {t('chat.tapToLoad')}</Text>
           </TouchableOpacity>
         ) : null}

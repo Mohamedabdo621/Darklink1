@@ -11,6 +11,7 @@ import { appAlert, appPrompt } from '../lib/dialog';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { GlowCard, NeonButton, Screen, ToggleRow } from '../components/ui';
+import { GlassIconChip } from '../components/GlassIconButton';
 import { bindReferral } from '../services/economy';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -154,7 +155,7 @@ export default function Settings() {
     const res = await bindReferral(refInput);
     if (res.ok) {
       setRefInput('');
-      appAlert('🎁', t('referral.bound'));
+      appAlert(t('referral.bindTitle'), t('referral.bound'));
     } else {
       appAlert(t('common.error'), t(`referral.err_${res.reason ?? 'error'}`));
     }
@@ -224,7 +225,12 @@ export default function Settings() {
           ))}
         </GlowCard>
 
-        <Text style={styles.section}>🎨 {t('settings.appearance')}</Text>
+        <View style={styles.sectionRow}>
+          <GlassIconChip name="color-palette-outline" size={14} />
+          <Text style={[styles.section, { marginTop: 0, marginBottom: 0 }]}>
+            {t('settings.appearance')}
+          </Text>
+        </View>
         <GlowCard>
           {(
             [
@@ -240,7 +246,12 @@ export default function Settings() {
           ))}
         </GlowCard>
 
-        <Text style={styles.section}>🔒 {t('settings.appLock')}</Text>
+        <View style={styles.sectionRow}>
+          <GlassIconChip name="lock-closed-outline" size={14} />
+          <Text style={[styles.section, { marginTop: 0, marginBottom: 0 }]}>
+            {t('settings.appLock')}
+          </Text>
+        </View>
         <GlowCard>
           <ToggleRow
             title={t('settings.appLock')}
@@ -256,7 +267,12 @@ export default function Settings() {
           />
         </GlowCard>
 
-        <Text style={styles.section}>🎁 {t('referral.bindTitle')}</Text>
+        <View style={styles.sectionRow}>
+          <GlassIconChip name="gift-outline" size={14} />
+          <Text style={[styles.section, { marginTop: 0, marginBottom: 0 }]}>
+            {t('referral.bindTitle')}
+          </Text>
+        </View>
         <GlowCard>
           <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm, lineHeight: 19 }}>
             {t('referral.bindDesc')}
@@ -279,28 +295,45 @@ export default function Settings() {
           <TouchableOpacity
             style={styles.row}
             onPress={() => router.push('/(auth)/forgot-password')}>
-            <Text style={{ color: colors.text, fontSize: fonts.sizes.md }}>
-              🔑 {t('settings.changePassword')}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              <GlassIconChip name="key-outline" size={14} />
+              <Text style={{ color: colors.text, fontSize: fonts.sizes.md }}>
+                {t('settings.changePassword')}
+              </Text>
+            </View>
           </TouchableOpacity>
           <TouchableOpacity style={styles.row} onPress={() => router.push('/legal')}>
-            <Text style={{ color: colors.text, fontSize: fonts.sizes.md }}>
-              📄 {t('settings.legal')}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              <GlassIconChip name="document-text-outline" size={14} />
+              <Text style={{ color: colors.text, fontSize: fonts.sizes.md }}>
+                {t('settings.legal')}
+              </Text>
+            </View>
           </TouchableOpacity>
           <TouchableOpacity style={styles.row} onPress={doLogout}>
-            <Text style={{ color: colors.text, fontSize: fonts.sizes.md }}>
-              🚪 {t('auth.logout')}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              <GlassIconChip name="log-out-outline" size={14} />
+              <Text style={{ color: colors.text, fontSize: fonts.sizes.md }}>
+                {t('auth.logout')}
+              </Text>
+            </View>
           </TouchableOpacity>
           <TouchableOpacity style={styles.row} onPress={deleteAccount}>
-            <Text style={{ color: colors.danger, fontSize: fonts.sizes.md }}>
-              🗑 {t('settings.deleteAccount')}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              <GlassIconChip name="trash-outline" size={14} danger />
+              <Text style={{ color: colors.danger, fontSize: fonts.sizes.md }}>
+                {t('settings.deleteAccount')}
+              </Text>
+            </View>
           </TouchableOpacity>
         </GlowCard>
 
-        <Text style={styles.section}>🚫 {t('settings.blockedUsers')}</Text>
+        <View style={styles.sectionRow}>
+          <GlassIconChip name="ban-outline" size={14} danger />
+          <Text style={[styles.section, { marginTop: 0, marginBottom: 0 }]}>
+            {t('settings.blockedUsers')}
+          </Text>
+        </View>
         <GlowCard>
           {blockedList.length === 0 ? (
             <Text style={{ color: colors.muted, paddingVertical: spacing.sm }}>
@@ -349,6 +382,14 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.muted,
     fontSize: fonts.sizes.sm,
     fontWeight: fonts.weights.bold,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  /** صف عنوان قسم: شريحة أيقونة زجاجية + العنوان */
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
   },

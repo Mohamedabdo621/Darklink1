@@ -92,9 +92,22 @@ export default function PostDetail() {
             {imgUrl ? (
               <Image source={{ uri: imgUrl }} style={styles.postImg} resizeMode="cover" />
             ) : null}
-            <Text style={{ color: colors.muted, marginTop: spacing.sm }}>
-              ❤️ {post.likes_count} • 💬 {post.comments_count}
-            </Text>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: spacing.md,
+                marginTop: spacing.sm,
+              }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons name="heart" size={15} color={colors.accent} />
+                <Text style={{ color: colors.muted }}>{post.likes_count}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons name="chatbubble-outline" size={15} color={colors.muted} />
+                <Text style={{ color: colors.muted }}>{post.comments_count}</Text>
+              </View>
+            </View>
           </GlowCard>
         ) : null}
 
