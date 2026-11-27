@@ -1,4 +1,4 @@
-import { I18nManager, Platform } from 'react-native';
+import { I18nManager } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Localization from 'expo-localization';
 import i18n from 'i18next';
@@ -23,12 +23,6 @@ export function applyDirection(lang: Language) {
   const rtl = lang === 'ar';
   I18nManager.allowRTL(true);
   if (I18nManager.isRTL !== rtl) I18nManager.forceRTL(rtl);
-  // على الويب forceRTL لوحده مش بيقلب اتجاه الصفحة — لازم dir على الـ document
-  // (من غيره كل الـ rows بتترسم LTR: البيت على الشمال والوقت على الشمال)
-  if (Platform.OS === 'web' && typeof document !== 'undefined') {
-    document.documentElement.dir = rtl ? 'rtl' : 'ltr';
-    document.documentElement.lang = lang;
-  }
 }
 
 export async function initI18n(): Promise<Language> {
