@@ -31,6 +31,7 @@ import {
   type OutboxItem,
 } from '../../lib/outbox';
 import { clearDraft, loadDraft, saveDraft } from '../../lib/drafts';
+import { EMOJI_QUICK, loadQuickEmoji, saveQuickEmoji } from '../../lib/quickEmoji';
 import { loadDataSaver } from '../../lib/dataSaver';
 import {
   editMessage,
@@ -65,9 +66,6 @@ interface GiftInfo {
   asset: string;
 }
 
-/** إيموجي سريع فوق لوحة الكتابة */
-const EMOJI_QUICK = ['😂', '❤️', '👍', '🔥', '😮', '🙏', '😢', '🎉'];
-
 export default function ChatScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -101,6 +99,7 @@ export default function ChatScreen() {
   const [editText, setEditText] = useState('');
   const [dataSaver, setDataSaver] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [quickEmoji, setQuickEmoji] = useState('❤️');
   const [loadedIds, setLoadedIds] = useState<Record<string, boolean>>({});
   const textRef = useRef('');
   const draftLoadedRef = useRef(false);
@@ -170,6 +169,7 @@ export default function ChatScreen() {
       }
       setPending(await loadOutboxFor(conversationId));
       setDataSaver(await loadDataSaver());
+      setQuickEmoji(await loadQuickEmoji());
       // حاول إرسال المعلّق لما تفتح الشات وإنت متصل
       void flushOutbox();
     })();
@@ -405,12 +405,15 @@ export default function ChatScreen() {
     };
   };
 
-  const onSendText = async () => {
-    if (!text.trim() || sending) return;
-    const body = text;
+  /** إرسال نص — clearComposer بيمسح صندوق الكتابة والمسودة (إرسال عادي)،
+   *  ولو false بيسيب اللي مكتوب زي ما هو (إيموجي سريع) */
+  const sendTextBody = async (body: string, clearComposer: boolean) => {
+    if (!body.trim() || sending) return;
     const replyId = replyTo?.id ?? null;
-    setText('');
-    textRef.current = '';
+    if (clearComposer) {
+      setText('');
+      textRef.current = '';
+    }
     setSending(true);
     // أوفلاين: احفظها في القائمة وهتتبعت تلقائي لما النت يرجع
     if (!online) {
@@ -442,12 +445,49 @@ export default function ChatScreen() {
       setReplyTo(null);
       return;
     }
-    await clearDraft(conversationId);
+    if (clearComposer) await clearDraft(conversationId);
     setReplyTo(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setMessages((prev) =>
       prev.some((x) => x.id === m.id) ? prev : [attachReply(m), ...prev],
     );
+  };
+
+  const onSendText = () => {
+    void sendTextBody(text, true);
+  };
+
+  /** إيموجي سريع: ضغطة واحدة بتبعته فورًا من غير ما تمسح اللي مكتوب */
+  const sendQuickEmoji = (emoji: string) => {
+    void sendTextBody(emoji, false);
+  };
+
+  /** ضغطة واحدة على زرار الإيموجي: بيبعت الإيموجي السريع فورًا
+   *  (وأثناء التحرير بيفتح/يقفل الشريط زي الأول) */
+  const onEmojiPress = () => {
+    if (editing) {
+      setEmojiOpen((v) => !v);
+      return;
+    }
+    sendQuickEmoji(quickEmoji);
+  };
+
+  /** ضغطة مطوّلة على زرار الإيموجي: بيفتح شريط اختيار الإيموجي */
+  const onEmojiLongPress = () => {
+    setEmojiOpen(true);
+  };
+
+  /** اختيار إيموجي من الشريط: بيتبعت فورًا وبيبقى الإيموجي السريع الجديد
+   *  (وأثناء التحرير بيتحط في نص التحرير زي الأول) */
+  const onPickQuickEmoji = (e: string) => {
+    if (editing) {
+      onTypeEdit(editText + e);
+      return;
+    }
+    setQuickEmoji(e);
+    void saveQuickEmoji(e);
+    setEmojiOpen(false);
+    sendQuickEmoji(e);
   };
 
   /** بدء تحرير رسالة نصية خاصة بي (خلال 15 دقيقة من الإرسال) */
@@ -931,7 +971,7 @@ export default function ChatScreen() {
           {emojiOpen ? (
             <View style={styles.emojiRowBar}>
               {EMOJI_QUICK.map((e) => (
-                <TouchableOpacity key={e} onPress={() => onType(text + e)}>
+                <TouchableOpacity key={e} onPress={() => onPickQuickEmoji(e)}>
                   <Text style={{ fontSize: 26 }}>{e}</Text>
                 </TouchableOpacity>
               ))}
@@ -939,8 +979,8 @@ export default function ChatScreen() {
           ) : null}
           <View style={styles.composer}>
             <View style={styles.inputWrap}>
-              <TouchableOpacity onPress={() => setEmojiOpen((v) => !v)}>
-                <Text style={{ fontSize: 22 }}>😊</Text>
+              <TouchableOpacity onPress={onEmojiPress} onLongPress={onEmojiLongPress}>
+                <Text style={{ fontSize: 22 }}>{quickEmoji}</Text>
               </TouchableOpacity>
               <TextInput
                 ref={inputRef}
