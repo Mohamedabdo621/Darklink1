@@ -1401,14 +1401,28 @@ export default function ChatScreen() {
       {replyTo && phase === 'idle' && !blockedByMe ? (
         <View style={styles.replyBar}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.replyBarName}>
+            {/* النهار: الاسم بلون بنفسجي غامق (#9333ea) بدل accent الفاتح — الشريط نفسه يفضل شفاف */}
+            <Text
+              style={[
+                styles.replyBarName,
+                resolved === 'light' && { color: colors.primaryBright },
+              ]}>
               {t('chat.replyingTo')} {nameFor(replyTo.sender_id)}
             </Text>
             <Text style={styles.replyBarText} numberOfLines={1}>
               {snippetFor(replyTo)}
             </Text>
           </View>
-          <GlassIconButton name="close" size={15} circular onPress={() => setReplyTo(null)} />
+          {resolved === 'light' ? (
+            <TouchableOpacity
+              style={styles.replyCloseSolid}
+              onPress={() => setReplyTo(null)}
+              hitSlop={6}>
+              <Ionicons name="close" size={18} color={colors.white} />
+            </TouchableOpacity>
+          ) : (
+            <GlassIconButton name="close" size={15} circular onPress={() => setReplyTo(null)} />
+          )}
         </View>
       ) : null}
 
@@ -1452,17 +1466,36 @@ export default function ChatScreen() {
             <View style={styles.editBar}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
                 <GlassIconChip name="pencil-outline" size={15} />
-                <Text style={styles.editBarText}>{t('chat.editMessage')}</Text>
+                {/* النهار: لون أغمق عشان يبان على الشريط الشفاف */}
+                <Text
+                  style={[
+                    styles.editBarText,
+                    resolved === 'light' && { color: colors.primaryBright },
+                  ]}>
+                  {t('chat.editMessage')}
+                </Text>
               </View>
-              <GlassIconButton
-                name="close"
-                size={15}
-                circular
-                onPress={() => {
-                  setEditing(null);
-                  setEditText('');
-                }}
-              />
+              {resolved === 'light' ? (
+                <TouchableOpacity
+                  style={styles.replyCloseSolid}
+                  onPress={() => {
+                    setEditing(null);
+                    setEditText('');
+                  }}
+                  hitSlop={6}>
+                  <Ionicons name="close" size={18} color={colors.white} />
+                </TouchableOpacity>
+              ) : (
+                <GlassIconButton
+                  name="close"
+                  size={15}
+                  circular
+                  onPress={() => {
+                    setEditing(null);
+                    setEditText('');
+                  }}
+                />
+              )}
             </View>
           ) : null}
           {!online ? (
@@ -2374,6 +2407,15 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.accent,
     fontSize: fonts.sizes.xs,
     fontWeight: fonts.weights.bold,
+  },
+  /** زرار إلغاء الرد/التعديل في النهار — دايرة بنفسجي ثابتة × بيضاء (الزجاجي مش باين على الفاتح) */
+  replyCloseSolid: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   replyBarText: { color: colors.text, fontSize: fonts.sizes.sm, marginTop: 1 },
   quote: {
