@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -8,8 +8,10 @@ import { supabase } from '../lib/supabase';
 import type { AppNotification } from '../lib/types';
 import { registerPushToken, requestNotificationPermission } from '../services/push';
 import { fetchNotifications, markAllNotificationsRead } from '../services/wallet';
-import { colors, fonts, spacing } from '../theme';
+import { fonts, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 const ICONS: Record<AppNotification['type'], string> = {
   new_message: '💬',
   voice_note: '🎤',
@@ -21,6 +23,8 @@ const ICONS: Record<AppNotification['type'], string> = {
 };
 
 export default function Notifications() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { profile: me } = useAuth();
   const [items, setItems] = React.useState<AppNotification[]>([]);
@@ -182,7 +186,7 @@ export default function Notifications() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   enableBtn: {
     backgroundColor: colors.card,
     borderWidth: 1,

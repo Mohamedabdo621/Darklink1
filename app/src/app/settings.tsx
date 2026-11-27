@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -7,12 +7,23 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { appAlert } from '../lib/dialog';
+import { appAlert, appPrompt } from '../lib/dialog';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { GlowCard, NeonButton, Screen } from '../components/ui';
+import { GlowCard, NeonButton, Screen, ToggleRow } from '../components/ui';
 import { bindReferral } from '../services/economy';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
+import {
+  authenticateBiometric,
+  biometricsAvailable,
+  hasPin,
+  isLockEnabled,
+  setLockEnabled,
+  setPin,
+  verifyPin,
+} from '../lib/applock';
+import { loadDataSaver, setDataSaver } from '../lib/dataSaver';
 import { setLanguage } from '../i18n';
 import { supabase } from '../lib/supabase';
 import {
@@ -21,14 +32,108 @@ import {
   unblockUser,
 } from '../services/social';
 import type { Language } from '../lib/types';
-import { colors, fonts, spacing } from '../theme';
+import type { ThemeColors, ThemeMode } from '../theme';
+import { fonts, spacing } from '../theme';
 
 export default function Settings() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t, i18n } = useTranslation();
   const { signOut, profile } = useAuth();
+  const { mode, setMode } = useTheme();
   const [blockedList, setBlockedList] = React.useState<
     { id: string; name: string }[]
   >([]);
+  const [lockOn, setLockOn] = React.useState(false);
+  const [saverOn, setSaverOn] = React.useState(false);
+
+  React.useEffect(() => {
+    (async () => {
+      setLockOn(await isLockEnabled());
+      setSaverOn(await loadDataSaver());
+    })();
+  }, []);
+
+  /** تفعيل/إيقاف قفل التطبيق — التفعيل يحتاج بصمة مسجلة أو PIN،
+   *  والإيقاف يحتاج تأكيد بالبصمة أو الـ PIN الأول. */
+  const onToggleLock = async (v: boolean) => {
+    if (v) {
+      const bio = await biometricsAvailable();
+      if (bio.hardware && bio.enrolled) {
+        await setLockEnabled(true);
+        setLockOn(true);
+        appAlert(t('settings.appLock'), t('settings.appLockEnabled'));
+        return;
+      }
+      if (await hasPin()) {
+        await setLockEnabled(true);
+        setLockOn(true);
+        appAlert(t('settings.appLock'), t('settings.appLockEnabled'));
+        return;
+      }
+      // مفيش بصمة ولا PIN — لازم يعيّن PIN الأول
+      appPrompt(
+        t('settings.appLockSetPin'),
+        t('settings.appLockPinPrompt'),
+        t('common.continue'),
+        (pin1) => {
+          if (!/^\d{4,8}$/.test(pin1.trim())) return;
+          appPrompt(
+            t('settings.appLockSetPin'),
+            t('settings.appLockPinConfirm'),
+            t('common.save'),
+            async (pin2) => {
+              if (pin1.trim() !== pin2.trim()) {
+                appAlert(t('common.error'), t('settings.appLockPinMismatch'));
+                return;
+              }
+              await setPin(pin1.trim());
+              await setLockEnabled(true);
+              setLockOn(true);
+              appAlert(t('settings.appLock'), t('settings.appLockEnabled'));
+            },
+            { secure: true, numeric: true },
+          );
+        },
+        { secure: true, numeric: true },
+      );
+      return;
+    }
+    const bio = await biometricsAvailable();
+    if (bio.hardware && bio.enrolled) {
+      const ok = await authenticateBiometric(t('chat.unlockBiometrics'));
+      if (!ok) return;
+      await setLockEnabled(false);
+      setLockOn(false);
+      appAlert(t('settings.appLock'), t('settings.appLockDisabled'));
+      return;
+    }
+    if (await hasPin()) {
+      appPrompt(
+        t('settings.appLock'),
+        t('chat.unlockPin'),
+        t('common.continue'),
+        async (pin) => {
+          if (await verifyPin(pin.trim())) {
+            await setLockEnabled(false);
+            setLockOn(false);
+            appAlert(t('settings.appLock'), t('settings.appLockDisabled'));
+          } else {
+            appAlert(t('common.error'), t('chat.unlockFailed'));
+          }
+        },
+        { secure: true, numeric: true },
+      );
+      return;
+    }
+    await setLockEnabled(false);
+    setLockOn(false);
+  };
+
+  const onToggleSaver = async (v: boolean) => {
+    setSaverOn(v);
+    await setDataSaver(v);
+  };
 
   React.useEffect(() => {
     (async () => {
@@ -119,6 +224,38 @@ export default function Settings() {
           ))}
         </GlowCard>
 
+        <Text style={styles.section}>🎨 {t('settings.appearance')}</Text>
+        <GlowCard>
+          {(
+            [
+              ['system', t('settings.themeSystem')],
+              ['light', t('settings.themeLight')],
+              ['dark', t('settings.themeDark')],
+            ] as [ThemeMode, string][]
+          ).map(([m, label]) => (
+            <TouchableOpacity key={m} onPress={() => void setMode(m)} style={styles.row}>
+              <Text style={{ color: colors.text, fontSize: fonts.sizes.md }}>{label}</Text>
+              {mode === m ? <Text style={{ color: colors.accent }}>✓</Text> : null}
+            </TouchableOpacity>
+          ))}
+        </GlowCard>
+
+        <Text style={styles.section}>🔒 {t('settings.appLock')}</Text>
+        <GlowCard>
+          <ToggleRow
+            title={t('settings.appLock')}
+            desc={t('settings.appLockDesc')}
+            value={lockOn}
+            onChange={(v) => void onToggleLock(v)}
+          />
+          <ToggleRow
+            title={t('settings.dataSaver')}
+            desc={t('settings.dataSaverDesc')}
+            value={saverOn}
+            onChange={(v) => void onToggleSaver(v)}
+          />
+        </GlowCard>
+
         <Text style={styles.section}>🎁 {t('referral.bindTitle')}</Text>
         <GlowCard>
           <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm, lineHeight: 19 }}>
@@ -190,7 +327,7 @@ export default function Settings() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   refInput: {
     flex: 1,
     backgroundColor: colors.card,

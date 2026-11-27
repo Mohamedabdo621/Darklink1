@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import {
   Image,
   ScrollView,
@@ -14,10 +14,14 @@ import { useTranslation } from 'react-i18next';
 import { GlowCard, NeonButton, Screen } from '../components/ui';
 import { appAlert } from '../lib/dialog';
 import { createPaymentOrder, fetchCashNumbers, uploadProof } from '../services/economy';
-import { colors, fonts, radius, spacing } from '../theme';
+import { fonts, radius, spacing } from '../theme';
 import { useAuth } from '../contexts/AuthContext';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 export default function ManualPay() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { profile: me } = useAuth();
   const { packageId, gems, price } = useLocalSearchParams<{
@@ -183,7 +187,7 @@ export default function ManualPay() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   title: {
     color: colors.text,
     fontSize: fonts.sizes.xl,

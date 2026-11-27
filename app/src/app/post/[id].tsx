@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,9 +13,13 @@ import {
   postMediaUrl,
 } from '../../services/timeline';
 import type { Post, PostComment } from '../../lib/types';
-import { colors, fonts, radius, spacing } from '../../theme';
+import { fonts, radius, spacing } from '../../theme';
 
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../theme';
 export default function PostDetail() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { profile } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -141,7 +145,7 @@ export default function PostDetail() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   back: { marginVertical: spacing.sm },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   avatar: { width: 38, height: 38, borderRadius: 19 },

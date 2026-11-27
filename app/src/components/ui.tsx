@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -14,15 +14,19 @@ import {
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTheme } from '../contexts/ThemeContext';
 import {
-  colors,
   fonts,
   gradients,
+  lightShadowGlow,
+  lightShadowGlowSoft,
+  lightTextGlow,
   radius,
   shadowGlow,
   shadowGlowSoft,
   spacing,
   textGlow,
+  type ThemeColors,
 } from '../theme';
 
 // نجوم خلفية ثابتة (مولّدة رياضياً — نفس الشكل في كل مرة)
@@ -59,6 +63,8 @@ export function Screen({
   children: React.ReactNode;
   style?: ViewStyle;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <SafeAreaView style={[styles.screen, style]}>
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -87,10 +93,12 @@ export function Screen({
 }
 
 export function Logo({ size = 40 }: { size?: number }) {
+  const { colors, resolved } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={{ alignItems: 'center' }}>
       <Text style={[styles.logo, { fontSize: size }]}>
-        DARK<Text style={styles.logoAccent}>LINK</Text>
+        DARK<Text style={[styles.logoAccent, resolved === 'light' ? lightTextGlow : textGlow]}>LINK</Text>
       </Text>
       <LinearGradient
         colors={[...gradients.neon]}
@@ -110,6 +118,7 @@ export function GradientRing({
   children: React.ReactNode;
   size?: number;
 }) {
+  const { colors, resolved } = useTheme();
   return (
     <LinearGradient
       colors={[...gradients.rainbow]}
@@ -122,7 +131,7 @@ export function GradientRing({
         padding: 3,
         alignItems: 'center',
         justifyContent: 'center',
-        ...shadowGlow,
+        ...(resolved === 'light' ? lightShadowGlow : shadowGlow),
       }}>
       <View
         style={{
@@ -153,6 +162,8 @@ export function NeonButton({
   disabled?: boolean;
   variant?: 'primary' | 'gold' | 'ghost' | 'danger';
 }) {
+  const { colors, resolved } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const off = disabled || loading;
   const [scale] = useState(() => new Animated.Value(1));
   const pressIn = () =>
@@ -200,7 +211,16 @@ export function NeonButton({
           colors={variant === 'gold' ? [...gradients.gold] : [...gradients.button]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.btn, variant === 'gold' ? shadowGlowSoft : shadowGlow]}>
+          style={[
+            styles.btn,
+            variant === 'gold'
+              ? resolved === 'light'
+                ? lightShadowGlowSoft
+                : shadowGlowSoft
+              : resolved === 'light'
+                ? lightShadowGlow
+                : shadowGlow,
+          ]}>
           <LinearGradient
             colors={[...gradients.glassSheen]}
             start={{ x: 0, y: 0 }}
@@ -220,6 +240,8 @@ export function NeonInput({
   error,
   ...props
 }: TextInputProps & { label?: string; error?: string }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [focused, setFocused] = useState(false);
   return (
     <View style={{ marginBottom: spacing.md }}>
@@ -247,9 +269,11 @@ export function GlowCard({
   children: React.ReactNode;
   style?: ViewStyle;
 }) {
+  const { colors, resolved } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={[styles.card, style]}>
-      <BlurView intensity={32} tint="dark" style={StyleSheet.absoluteFill} />
+      <BlurView intensity={resolved === 'light' ? 20 : 32} tint={resolved === 'light' ? 'light' : 'dark'} style={StyleSheet.absoluteFill} />
       <LinearGradient
         colors={[...gradients.glassSheen]}
         start={{ x: 0, y: 0 }}
@@ -273,6 +297,8 @@ export function ToggleRow({
   value: boolean;
   onChange: (v: boolean) => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.toggleRow}>
       <View style={{ flex: 1 }}>
@@ -290,6 +316,8 @@ export function ToggleRow({
 }
 
 export function Chip({ label, gold }: { label: string; gold?: boolean }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={[styles.chip, gold && { borderColor: colors.gold }]}>
       <Text style={[styles.chipText, gold && { color: colors.gold }]}>{label}</Text>
@@ -297,7 +325,7 @@ export function Chip({ label, gold }: { label: string; gold?: boolean }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing.lg },
   glowTop: {
     position: 'absolute',

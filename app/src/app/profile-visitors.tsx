@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -6,10 +6,14 @@ import { NeonButton, Screen } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchMyVisitors, type VisitRow } from '../services/features';
 import { avatarSignedUrl } from '../services/profile';
-import { colors, fonts, spacing } from '../theme';
+import { fonts, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 /** مين زار بروفايلي — ميزة VIP */
 export default function ProfileVisitors() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { profile: me } = useAuth();
   const [rows, setRows] = useState<VisitRow[]>([]);
@@ -103,7 +107,7 @@ export default function ProfileVisitors() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',

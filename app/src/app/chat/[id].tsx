@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import { appAlert, appPrompt } from '../../lib/dialog';
 import {
   AudioModule,
@@ -21,6 +22,16 @@ import { giftImage } from '../../lib/giftAssets';
 import { supabase } from '../../lib/supabase';
 import type { Message, PublicProfile, ReplyPreview } from '../../lib/types';
 import {
+  enqueueOutbox,
+  flushOutbox,
+  loadOutboxFor,
+  onOutboxSent,
+  type OutboxItem,
+} from '../../lib/outbox';
+import { clearDraft, loadDraft, saveDraft } from '../../lib/drafts';
+import { loadDataSaver } from '../../lib/dataSaver';
+import {
+  editMessage,
   fetchMessages,
   fetchReactions,
   fetchReplyPreview,
@@ -31,24 +42,34 @@ import {
   sendTextMessage,
   sendVoiceMessage,
   softDeleteMessage,
+  toggleConversationFlag,
   toggleReaction,
   uploadChatFile,
 } from '../../services/chat';
 import { avatarSignedUrl } from '../../services/profile';
 import {
+  blockUser,
   fetchPublicProfile,
   isBlockedByMe,
   reportUser,
+  unblockUser,
 } from '../../services/social';
-import { colors, fonts, radius, spacing } from '../../theme';
+import { fonts, radius, spacing } from '../../theme';
 
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../theme';
 interface GiftInfo {
   name_key: string;
   asset: string;
 }
 
+/** إيموجي سريع فوق لوحة الكتابة */
+const EMOJI_QUICK = ['😂', '❤️', '👍', '🔥', '😮', '🙏', '😢', '🎉'];
+
 export default function ChatScreen() {
-  const { t } = useTranslation();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { t, i18n } = useTranslation();
   const { id: conversationId } = useLocalSearchParams<{ id: string }>();
   const { profile: me } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -69,6 +90,18 @@ export default function ChatScreen() {
   const [actionMsg, setActionMsg] = useState<Message | null>(null);
   const [typing, setTyping] = useState(false);
   const [otherOnline, setOtherOnline] = useState(false);
+  // v1.6.0 — قائمة انتظار أوفلاين + مسودات + تحرير + قائمة الـ 3 نقط
+  const [online, setOnline] = useState(true);
+  const [pending, setPending] = useState<OutboxItem[]>([]);
+  const [muted, setMuted] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editing, setEditing] = useState<Message | null>(null);
+  const [editText, setEditText] = useState('');
+  const [dataSaver, setDataSaver] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [loadedIds, setLoadedIds] = useState<Record<string, boolean>>({});
+  const textRef = useRef('');
+  const draftLoadedRef = useRef(false);
   const channelRef = useRef<any>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingSent = useRef(0);
@@ -79,7 +112,7 @@ export default function ChatScreen() {
   const [phase, setPhase] = useState<'idle' | 'recording' | 'preview'>('idle');
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [previewDur, setPreviewDur] = useState(0);
-  const listRef = useRef<FlatList<Message>>(null);
+  const listRef = useRef<FlatList<Message | OutboxItem>>(null);
 
   const loadGiftInfo = useCallback(async (msgs: Message[]) => {
     const ids = msgs.map((m) => m.gift_send_id).filter(Boolean) as string[];
@@ -114,6 +147,7 @@ export default function ChatScreen() {
       setOther(pub);
       if (pub) setOtherAvatar(await avatarSignedUrl(pub.avatar_url));
       setBlockedByMe(await isBlockedByMe(me.id, oid));
+      setMuted(((conv.muted_for ?? []) as string[]).includes(me.id));
     }
     const msgs = await fetchMessages(conversationId);
     setMessages(msgs);
@@ -121,6 +155,52 @@ export default function ChatScreen() {
     setReactions(await fetchReactions(msgs.map((m) => m.id), me.id));
     await markConversationRead(conversationId);
   }, [conversationId, me, loadGiftInfo]);
+
+  // v1.6.0 — استرجاع المسودة + الرسائل المعلقة + وضع توفير البيانات
+  useEffect(() => {
+    if (!conversationId || !me || draftLoadedRef.current) return;
+    draftLoadedRef.current = true;
+    (async () => {
+      const d = await loadDraft(conversationId);
+      if (d) {
+        setText(d);
+        textRef.current = d;
+      }
+      setPending(await loadOutboxFor(conversationId));
+      setDataSaver(await loadDataSaver());
+      // حاول إرسال المعلّق لما تفتح الشات وإنت متصل
+      void flushOutbox();
+    })();
+  }, [conversationId, me]);
+
+  // v1.6.0 — حفظ المسودة عند الخروج من الشات
+  useEffect(() => {
+    const cid = conversationId;
+    return () => {
+      if (cid && textRef.current.trim()) {
+        void saveDraft(cid, textRef.current);
+      }
+    };
+  }, [conversationId]);
+
+  // v1.6.0 — تتبع الاتصال: لما النت يرجع، ابعت القائمة تلقائيًا
+  useEffect(() => {
+    const unsub = NetInfo.addEventListener((state) => {
+      const isOnline = !!state.isConnected;
+      setOnline(isOnline);
+      if (isOnline) void flushOutbox();
+    });
+    return () => unsub();
+  }, []);
+
+  // v1.6.0 — لما عنصر معلّق يتبعت بنجاح، شيله من العرض
+  // (الرسالة الحقيقية بتوصل من الاشتراك الفوري — بيتفادى التكرار بالـ id)
+  useEffect(() => {
+    const off = onOutboxSent((_msg, localId) => {
+      setPending((prev) => prev.filter((p) => p.localId !== localId));
+    });
+    return off;
+  }, []);
 
   useEffect(() => {
     // تحميل المحادثة عند الفتح (نمط جلب بيانات قياسي)
@@ -253,9 +333,12 @@ export default function ChatScreen() {
   const nameFor = (senderId: string): string =>
     senderId === me.id ? t('chat.youName') : (other?.shown_name ?? '');
 
-  /** كتابة: تحديث النص + بث «بيكتب» مثبّتًا كل ٢.٥ ثانية */
+  /** كتابة: تحديث النص + حفظ مسودة + بث «بيكتب» مثبّتًا كل ٢.٥ ثانية */
   const onType = (v: string) => {
     setText(v);
+    textRef.current = v;
+    // مسودة: احفظ النص لو المستخدم طلع من الشات من غير ما يبعت
+    if (conversationId) void saveDraft(conversationId, v);
     if (v.trim() && Date.now() - lastTypingSent.current > 2500) {
       lastTypingSent.current = Date.now();
       channelRef.current?.send({
@@ -264,6 +347,11 @@ export default function ChatScreen() {
         payload: { from: me.id },
       });
     }
+  };
+
+  /** تحرير رسالة: النص يروح للمسودة والتحرير يتلغي */
+  const onTypeEdit = (v: string) => {
+    setEditText(v);
   };
 
   const onReact = async (m: Message, emoji: string) => {
@@ -285,7 +373,7 @@ export default function ChatScreen() {
       }
       return { ...prev, [m.id]: cur };
     });
-    Haptics.selectionAsync().catch(() => {});
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     const ok = await toggleReaction(m.id, me.id, emoji, myCurrent);
     if (!ok) {
       const fresh = await fetchReactions([m.id], me.id);
@@ -320,14 +408,39 @@ export default function ChatScreen() {
     const body = text;
     const replyId = replyTo?.id ?? null;
     setText('');
+    textRef.current = '';
     setSending(true);
+    // أوفلاين: احفظها في القائمة وهتتبعت تلقائي لما النت يرجع
+    if (!online) {
+      const item = await enqueueOutbox({
+        conversationId,
+        senderId: me.id,
+        type: 'text',
+        body,
+        replyToId: replyId,
+      });
+      setPending((prev) => [item, ...prev]);
+      setReplyTo(null);
+      setSending(false);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      return;
+    }
     const m = await sendTextMessage(conversationId, me.id, body, replyId);
     setSending(false);
     if (!m) {
-      setText(body);
-      failSend();
+      // فشل رغم الاتصال — حطها في القائمة وحاول تاني تلقائيًا
+      const item = await enqueueOutbox({
+        conversationId,
+        senderId: me.id,
+        type: 'text',
+        body,
+        replyToId: replyId,
+      });
+      setPending((prev) => [item, ...prev]);
+      setReplyTo(null);
       return;
     }
+    await clearDraft(conversationId);
     setReplyTo(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setMessages((prev) =>
@@ -335,16 +448,58 @@ export default function ChatScreen() {
     );
   };
 
-  const onAttach = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) return;
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images', 'videos'],
-      quality: 0.85,
-    });
-    if (res.canceled || !res.assets[0]) return;
-    const asset = res.assets[0];
-    const isVideo = asset.type === 'video';
+  /** بدء تحرير رسالة نصية خاصة بي (خلال 15 دقيقة من الإرسال) */
+  const startEdit = (m: Message) => {
+    if (m.type !== 'text' || m.is_deleted) return;
+    const ageMs = Date.now() - new Date(m.created_at).getTime();
+    if (ageMs > 15 * 60 * 1000) {
+      appAlert(t('common.error'), t('chat.editExpired'));
+      return;
+    }
+    setEditing(m);
+    setEditText(m.body ?? '');
+    setTimeout(() => inputRef.current?.focus(), 60);
+  };
+
+  const saveEdit = async () => {
+    if (!editing || !editText.trim()) return;
+    const target = editing;
+    const body = editText.trim();
+    setEditing(null);
+    setEditText('');
+    const ok = await editMessage(target.id, body);
+    if (!ok) {
+      appAlert(t('common.error'), t('common.error'));
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setMessages((prev) =>
+      prev.map((x) =>
+        x.id === target.id
+          ? { ...x, body, edited_at: new Date().toISOString() }
+          : x,
+      ),
+    );
+  };
+
+  /** إرسال وسائط: أوفلاين بيتخزن في القائمة، ومتصل بيرفع على طول */
+  const sendPickedMedia = async (asset: { uri: string }, isVideo: boolean) => {
+    const replyId = replyTo?.id ?? null;
+    if (!online) {
+      const item = await enqueueOutbox({
+        conversationId,
+        senderId: me.id,
+        type: isVideo ? 'video' : 'image',
+        localUri: asset.uri,
+        ext: isVideo ? 'mp4' : 'jpg',
+        contentType: isVideo ? 'video/mp4' : 'image/jpeg',
+        bucket: 'chat-media',
+        replyToId: replyId,
+      });
+      setPending((prev) => [item, ...prev]);
+      setReplyTo(null);
+      return;
+    }
     setSending(true);
     const path = await uploadChatFile(
       'chat-media',
@@ -360,7 +515,7 @@ export default function ChatScreen() {
         me.id,
         isVideo ? 'video' : 'image',
         path,
-        replyTo?.id ?? null,
+        replyId,
       );
       if (m) {
         setMessages((prev) => [attachReply(m), ...prev]);
@@ -368,6 +523,30 @@ export default function ChatScreen() {
       } else failSend();
     }
     setSending(false);
+  };
+
+  const onAttach = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return;
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images', 'videos'],
+      quality: 0.85,
+    });
+    if (res.canceled || !res.assets[0]) return;
+    const asset = res.assets[0];
+    await sendPickedMedia(asset, asset.type === 'video');
+  };
+
+  const onCamera = async () => {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) return;
+    const res = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images', 'videos'],
+      quality: 0.85,
+    });
+    if (res.canceled || !res.assets[0]) return;
+    const asset = res.assets[0];
+    await sendPickedMedia(asset, asset.type === 'video');
   };
 
   const startRecording = async () => {
@@ -396,12 +575,32 @@ export default function ChatScreen() {
 
   const sendRecording = async () => {
     if (!previewUri) return;
+    const replyId = replyTo?.id ?? null;
+    const uri = previewUri;
+    const dur = previewDur;
+    setPreviewUri(null);
+    setPhase('idle');
+    // أوفلاين: الفويس بيتخزن في القائمة ويترفع لما النت يرجع
+    if (!online) {
+      const item = await enqueueOutbox({
+        conversationId,
+        senderId: me.id,
+        type: 'voice',
+        localUri: uri,
+        bucket: 'voice-notes',
+        durationSec: dur,
+        replyToId: replyId,
+      });
+      setPending((prev) => [item, ...prev]);
+      setReplyTo(null);
+      return;
+    }
     setSending(true);
     const path = await uploadChatFile(
       'voice-notes',
       conversationId,
       me.id,
-      previewUri,
+      uri,
       'm4a',
       'audio/mp4',
     );
@@ -410,8 +609,8 @@ export default function ChatScreen() {
         conversationId,
         me.id,
         path,
-        previewDur,
-        replyTo?.id ?? null,
+        dur,
+        replyId,
       );
       if (m) {
         setMessages((prev) => [attachReply(m), ...prev]);
@@ -419,8 +618,6 @@ export default function ChatScreen() {
       } else failSend();
     }
     setSending(false);
-    setPreviewUri(null);
-    setPhase('idle');
   };
 
   const onLongPress = (m: Message) => {
@@ -453,6 +650,65 @@ export default function ChatScreen() {
       },
     );
   };
+
+  // ---------- قائمة الـ 3 نقط في الهيدر (5 عناصر — من غير عرض البروفايل:
+  // الضغط على الصورة/الاسم بيفتح البروفايل أصلًا) ----------
+  const onToggleMute = async () => {
+    setMenuOpen(false);
+    const next = !muted;
+    setMuted(next);
+    Haptics.selectionAsync().catch(() => {});
+    const ok = await toggleConversationFlag(conversationId, 'muted_for');
+    if (!ok) setMuted(!next);
+  };
+
+  const onBlockToggle = async () => {
+    if (!otherId) return;
+    setMenuOpen(false);
+    if (blockedByMe) {
+      if (await unblockUser(me.id, otherId)) {
+        setBlockedByMe(false);
+        appAlert('✓', t('chat.unblocked'));
+      }
+      return;
+    }
+    if (await blockUser(me.id, otherId)) {
+      setBlockedByMe(true);
+      appAlert('🚫', t('userProfile.blocked'));
+    }
+  };
+
+  const onReportUser = () => {
+    if (!otherId) return;
+    setMenuOpen(false);
+    appPrompt(
+      t('userProfile.report'),
+      t('userProfile.reportReason'),
+      t('common.send'),
+      async (reason) => {
+        if (!reason?.trim()) return;
+        if (await reportUser(me.id, otherId, reason.trim())) {
+          appAlert('✓', t('userProfile.reportSent'));
+        }
+      },
+    );
+  };
+
+  /** فاصل التاريخ: "اليوم" أو التاريخ — يظهر فوق أول رسالة في اليوم */
+  const dayKey = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  };
+  const dayLabel = (iso: string) => {
+    if (dayKey(iso) === dayKey(new Date().toISOString())) return t('chat.today');
+    return new Date(iso).toLocaleDateString(
+      i18n.language === 'ar' ? 'ar-EG' : 'en-GB',
+      { day: 'numeric', month: 'long', year: 'numeric' },
+    );
+  };
+
+  /** القائمة: المعلّقة (الأحدث) أولًا ثم الرسائل — المعلقة باينة بعلامة ساعة */
+  const listData: (Message | OutboxItem)[] = [...pending, ...messages];
 
   return (
     <View style={styles.root}>
@@ -502,18 +758,33 @@ export default function ChatScreen() {
           }>
           <Text style={{ fontSize: 22 }}>🎁</Text>
         </TouchableOpacity>
+        <TouchableOpacity onPress={() => setMenuOpen(true)} style={styles.menuBtn}>
+          <Text style={{ color: colors.text, fontSize: 20, fontWeight: '700' }}>⋮</Text>
+        </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       {/* الرسائل */}
       <FlatList
         ref={listRef}
-        data={messages}
+        data={listData}
         inverted
-        keyExtractor={(m) => m.id}
-        contentContainerStyle={{ padding: spacing.md, gap: spacing.sm }}
-        renderItem={({ item }) => {
+        keyExtractor={(m) => ('localId' in m ? m.localId : m.id)}
+        contentContainerStyle={{ padding: spacing.md }}
+        renderItem={({ item, index }) => {
+          // رسالة معلّقة (أوفلاين) — فقاعة شفافة بعلامة ساعة
+          if ('localId' in item) {
+            return <PendingBubble item={item} />;
+          }
           const mine = item.sender_id === me.id;
+          // فاصل التاريخ فوق أول رسالة في اليوم (الأقدم في المجموعة)
+          const next = listData[index + 1];
+          const showDay =
+            !next || 'localId' in next || dayKey(next.created_at) !== dayKey(item.created_at);
+          // مسافة أصغر بين رسائل نفس الشخص المتتالية
+          const nextMine =
+            !!next && !('localId' in next) && next.sender_id === item.sender_id;
+          const gap = nextMine ? 2 : 10;
           const bubble = (
             <MessageBubble
               m={item}
@@ -533,50 +804,68 @@ export default function ChatScreen() {
                 })
               }
               onLongPress={() => onLongPress(item)}
+              dataSaver={dataSaver}
+              forceLoad={!!loadedIds[item.id]}
+              onLoadMedia={() =>
+                setLoadedIds((prev) => ({ ...prev, [item.id]: true }))
+              }
             />
           );
+          const pill = showDay ? (
+            <View style={styles.datePill}>
+              <Text style={styles.datePillText}>{dayLabel(item.created_at)}</Text>
+            </View>
+          ) : null;
           if (item.is_deleted) {
             return (
-              <View
-                style={{
-                  alignSelf: mine ? 'flex-end' : 'flex-start',
-                  maxWidth: '82%',
-                }}>
-                {bubble}
-              </View>
+              <>
+                {pill}
+                <View
+                  style={{
+                    alignSelf: mine ? 'flex-end' : 'flex-start',
+                    maxWidth: '75%',
+                    marginBottom: gap,
+                  }}>
+                  {bubble}
+                </View>
+              </>
             );
           }
           return (
-            <Swipeable
-              ref={(r) => {
-                if (r) swipeRefs.current.set(item.id, r);
-                else swipeRefs.current.delete(item.id);
-              }}
-              friction={2}
-              leftThreshold={36}
-              rightThreshold={36}
-              overshootLeft={false}
-              overshootRight={false}
-              containerStyle={{
-                alignSelf: mine ? 'flex-end' : 'flex-start',
-                maxWidth: '82%',
-              }}
-              renderLeftActions={() => (
-                <View style={styles.replyAction}>
-                  <Text style={{ fontSize: 19 }}>↩</Text>
-                </View>
-              )}
-              renderRightActions={() => (
-                <View style={styles.replyAction}>
-                  <Text style={{ fontSize: 19 }}>↪</Text>
-                </View>
-              )}
-              onSwipeableOpen={() => {
-                startReply(item);
-                swipeRefs.current.get(item.id)?.close();
-              }}>
-              {bubble}
-            </Swipeable>
+            <>
+              {pill}
+              <Swipeable
+                ref={(r) => {
+                  if (r) swipeRefs.current.set(item.id, r);
+                  else swipeRefs.current.delete(item.id);
+                }}
+                friction={2}
+                leftThreshold={36}
+                rightThreshold={36}
+                overshootLeft={false}
+                overshootRight={false}
+                containerStyle={{
+                  alignSelf: mine ? 'flex-end' : 'flex-start',
+                  maxWidth: '75%',
+                  marginBottom: gap,
+                }}
+                renderLeftActions={() => (
+                  <View style={styles.replyAction}>
+                    <Text style={{ fontSize: 19 }}>↩</Text>
+                  </View>
+                )}
+                renderRightActions={() => (
+                  <View style={styles.replyAction}>
+                    <Text style={{ fontSize: 19 }}>↪</Text>
+                  </View>
+                )}
+                onSwipeableOpen={() => {
+                  startReply(item);
+                  swipeRefs.current.get(item.id)?.close();
+                }}>
+                {bubble}
+              </Swipeable>
+            </>
           );
         }}
       />
@@ -628,31 +917,72 @@ export default function ChatScreen() {
           </TouchableOpacity>
         </View>
       ) : (
-        <View style={styles.composer}>
-          <TouchableOpacity onPress={onAttach}>
-            <Text style={{ fontSize: 24 }}>📎</Text>
-          </TouchableOpacity>
-          <TextInput
-            ref={inputRef}
-            value={text}
-            onChangeText={onType}
-            placeholder={t('chat.typeMessage')}
-            placeholderTextColor={colors.faint}
-            style={styles.input}
-            multiline
-          />
-          {text.trim() ? (
-            <TouchableOpacity onPress={onSendText} style={styles.sendBtn}>
-              <Text style={{ fontSize: 18 }}>➤</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              onPressIn={startRecording}
-              style={[styles.sendBtn, { backgroundColor: colors.magenta }]}>
-              <Text style={{ fontSize: 18 }}>🎤</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        <>
+          {editing ? (
+            <View style={styles.editBar}>
+              <Text style={styles.editBarText}>✏️ {t('chat.editMessage')}</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setEditing(null);
+                  setEditText('');
+                }}
+                hitSlop={8}>
+                <Text style={{ color: colors.muted, fontSize: 17 }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+          {!online ? (
+            <View style={styles.offlineBar}>
+              <Text style={styles.offlineBarText}>📶 {t('chat.offlineNotice')}</Text>
+            </View>
+          ) : null}
+          {emojiOpen ? (
+            <View style={styles.emojiRowBar}>
+              {EMOJI_QUICK.map((e) => (
+                <TouchableOpacity key={e} onPress={() => onType(text + e)}>
+                  <Text style={{ fontSize: 26 }}>{e}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
+          <View style={styles.composer}>
+            <View style={styles.inputWrap}>
+              <TouchableOpacity onPress={() => setEmojiOpen((v) => !v)}>
+                <Text style={{ fontSize: 22 }}>😊</Text>
+              </TouchableOpacity>
+              <TextInput
+                ref={inputRef}
+                value={editing ? editText : text}
+                onChangeText={editing ? onTypeEdit : onType}
+                placeholder={editing ? t('chat.editHint') : t('chat.typeMessage')}
+                placeholderTextColor={colors.faint}
+                style={styles.input}
+                multiline
+              />
+              <TouchableOpacity onPress={onCamera}>
+                <Text style={{ fontSize: 22 }}>📷</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onAttach}>
+                <Text style={{ fontSize: 22 }}>📎</Text>
+              </TouchableOpacity>
+            </View>
+            {editing ? (
+              <TouchableOpacity onPress={saveEdit} style={styles.sendBtn}>
+                <Text style={{ fontSize: 18 }}>✔</Text>
+              </TouchableOpacity>
+            ) : text.trim() ? (
+              <TouchableOpacity onPress={onSendText} style={styles.sendBtn}>
+                <Text style={{ fontSize: 18 }}>➤</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPressIn={startRecording}
+                style={[styles.sendBtn, { backgroundColor: colors.magenta }]}>
+                <Text style={{ fontSize: 18 }}>🎤</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </>
       )}
       </KeyboardAvoidingView>
 
@@ -696,6 +1026,16 @@ export default function ChatScreen() {
             {actionMsg && actionMsg.sender_id === me.id && !actionMsg.is_deleted ? (
               <TouchableOpacity
                 style={styles.sheetRow}
+                onPress={() => {
+                  setActionMsg(null);
+                  startEdit(actionMsg);
+                }}>
+                <Text style={styles.sheetRowText}>✏️ {t('chat.editMessage')}</Text>
+              </TouchableOpacity>
+            ) : null}
+            {actionMsg && actionMsg.sender_id === me.id && !actionMsg.is_deleted ? (
+              <TouchableOpacity
+                style={styles.sheetRow}
                 onPress={() => sheetDelete(actionMsg)}>
                 <Text style={[styles.sheetRowText, { color: colors.danger }]}>
                   🗑 {t('chat.deleteMessage')}
@@ -712,6 +1052,64 @@ export default function ChatScreen() {
             <TouchableOpacity
               style={styles.sheetRow}
               onPress={() => setActionMsg(null)}>
+              <Text style={[styles.sheetRowText, { color: colors.muted }]}>
+                {t('common.cancel')}
+              </Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* قائمة الـ 3 نقط: الوسائط، الكتم، الهدية، الحظر، الإبلاغ */}
+      <Modal
+        transparent
+        visible={menuOpen}
+        animationType="fade"
+        onRequestClose={() => setMenuOpen(false)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setMenuOpen(false)}>
+          <Pressable style={styles.sheet} onPress={() => {}}>
+            <TouchableOpacity
+              style={styles.sheetRow}
+              onPress={() => {
+                setMenuOpen(false);
+                router.push({
+                  pathname: '/chat-media',
+                  params: { conversationId },
+                });
+              }}>
+              <Text style={styles.sheetRowText}>🖼 {t('chat.menuMedia')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.sheetRow} onPress={onToggleMute}>
+              <Text style={styles.sheetRowText}>
+                {muted ? `🔔 ${t('chat.menuUnmute')}` : `🔕 ${t('chat.menuMute')}`}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.sheetRow}
+              onPress={() => {
+                setMenuOpen(false);
+                if (otherId) {
+                  router.push({
+                    pathname: '/gift-picker',
+                    params: { userId: otherId },
+                  });
+                }
+              }}>
+              <Text style={styles.sheetRowText}>🎁 {t('chat.menuGift')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.sheetRow} onPress={onBlockToggle}>
+              <Text style={[styles.sheetRowText, { color: colors.danger }]}>
+                {blockedByMe ? `✓ ${t('chat.menuUnblock')}` : `🚫 ${t('chat.menuBlock')}`}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.sheetRow} onPress={onReportUser}>
+              <Text style={[styles.sheetRowText, { color: colors.danger }]}>
+                🚩 {t('chat.menuReport')}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.sheetRow}
+              onPress={() => setMenuOpen(false)}>
               <Text style={[styles.sheetRowText, { color: colors.muted }]}>
                 {t('common.cancel')}
               </Text>
@@ -742,6 +1140,9 @@ function MessageBubble({
   onGiftPress,
   onMediaPress,
   onLongPress,
+  dataSaver,
+  forceLoad,
+  onLoadMedia,
 }: {
   m: Message;
   mine: boolean;
@@ -753,12 +1154,25 @@ function MessageBubble({
   onGiftPress?: (gift: GiftInfo) => void;
   onMediaPress: (url: string, kind: 'image' | 'video') => void;
   onLongPress: () => void;
+  /** توفير البيانات: الصورة متنزلش تلقائيًا لحد ما المستخدم يدوس عليها */
+  dataSaver: boolean;
+  /** المستخدم داس "تحميل" على الصورة دي */
+  forceLoad: boolean;
+  onLoadMedia: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
+    // وضع توفير البيانات: متنزلش الصورة إلا لما المستخدم يدوس عليها
+    if (dataSaver && m.type === 'image' && !forceLoad) {
+      return () => {
+        live = false;
+      };
+    }
     if ((m.type === 'image' || m.type === 'video') && m.media_path) {
       mediaSignedUrl('chat-media', m.media_path).then((u) => {
         if (live) setMediaUrl(u);
@@ -767,7 +1181,7 @@ function MessageBubble({
     return () => {
       live = false;
     };
-  }, [m.type, m.media_path]);
+  }, [m.type, m.media_path, dataSaver, forceLoad]);
 
   const time = new Date(m.created_at).toLocaleTimeString([], {
     hour: '2-digit',
@@ -792,7 +1206,12 @@ function MessageBubble({
         ) : m.type === 'text' ? (
           <Text style={[styles.msgText, mine && { color: colors.white }]}>{m.body}</Text>
         ) : m.type === 'image' ? (
-          mediaUrl ? (
+          dataSaver && !forceLoad ? (
+            <TouchableOpacity onPress={onLoadMedia} style={styles.tapToLoad}>
+              <Text style={{ fontSize: 30 }}>🖼</Text>
+              <Text style={styles.tapToLoadText}>↓ {t('chat.tapToLoad')}</Text>
+            </TouchableOpacity>
+          ) : mediaUrl ? (
             <TouchableOpacity onPress={() => onMediaPress(mediaUrl, 'image')}>
               <Image source={{ uri: mediaUrl }} style={styles.mediaImg} resizeMode="cover" />
             </TouchableOpacity>
@@ -841,6 +1260,7 @@ function MessageBubble({
         ) : null}
         <Text style={[styles.time, mine && { color: 'rgba(255,255,255,0.7)' }]}>
           {time}
+          {m.edited_at ? ` • ${t('chat.edited')}` : ''}
           {mine && !m.is_deleted ? (m.read_at ? ' ✓✓' : ' ✓') : ''}
         </Text>
       </View>
@@ -848,7 +1268,36 @@ function MessageBubble({
   );
 }
 
-const styles = StyleSheet.create({
+/** فقاعة رسالة معلّقة (أوفلاين): شفافة شوية، بعلامة ساعة، بتتبعت لما النت يرجع */
+function PendingBubble({ item }: { item: OutboxItem }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { t } = useTranslation();
+  const label =
+    item.type === 'text'
+      ? item.body ?? ''
+      : item.type === 'voice'
+        ? t('chat.voiceNote')
+        : `🖼 ${t('chat.sending')}`;
+  return (
+    <View
+      style={{
+        alignSelf: 'flex-end',
+        maxWidth: '75%',
+        marginBottom: 10,
+        opacity: 0.65,
+      }}>
+      <View style={[styles.bubble, styles.bubbleMine]}>
+        <Text style={[styles.msgText, { color: colors.white }]}>{label}</Text>
+        <Text style={[styles.time, { color: 'rgba(255,255,255,0.7)' }]}>
+          🕐 {t('chat.sending')}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg, paddingTop: 44 },
   header: {
     flexDirection: 'row',
@@ -999,17 +1448,79 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    backgroundColor: colors.bg,
-    borderWidth: 1,
-    borderColor: colors.stroke,
-    borderRadius: radius.full,
     color: colors.text,
-    paddingHorizontal: spacing.md,
     paddingVertical: 9,
     maxHeight: 110,
     fontSize: fonts.sizes.md,
     textAlign: 'left',
   },
+  /** حقل الكتابة الدائري: إيموجي يمين، كاميرا ومرفق جواه */
+  inputWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+  },
+  /** فاصل التاريخ في نص الشات */
+  datePill: {
+    alignSelf: 'center',
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+    marginVertical: 8,
+  },
+  datePillText: { color: colors.muted, fontSize: fonts.sizes.xs },
+  /** شريط التحرير فوق حقل الكتابة */
+  editBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.stroke,
+  },
+  editBarText: { color: colors.accent, fontSize: fonts.sizes.sm },
+  /** شريط "أنت غير متصل" — الرسايل بتتخزن وهتتبعت تلقائيًا */
+  offlineBar: {
+    backgroundColor: '#451a03',
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  offlineBarText: { color: '#fdba74', fontSize: fonts.sizes.xs },
+  /** صف الإيموجي السريع فوق لوحة الكتابة */
+  emojiRowBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.stroke,
+  },
+  /** زر الـ 3 نقط في الهيدر */
+  menuBtn: { paddingHorizontal: 6, paddingVertical: 2 },
+  /** مكان الصورة في وضع توفير البيانات — دوس لتحميلها */
+  tapToLoad: {
+    width: 210,
+    height: 160,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  tapToLoadText: { color: colors.muted, fontSize: fonts.sizes.sm },
   sendBtn: {
     width: 42,
     height: 42,

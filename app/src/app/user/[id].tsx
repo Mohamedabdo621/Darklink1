@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { appAlert, appPrompt } from '../../lib/dialog';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -20,9 +21,13 @@ import {
   unblockUser,
   type ReceivedGiftSummary,
 } from '../../services/social';
-import { colors, fonts, spacing } from '../../theme';
+import { fonts, radius, spacing } from '../../theme';
 
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../theme';
 export default function UserProfile() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { profile: me } = useAuth();
@@ -156,6 +161,28 @@ export default function UserProfile() {
           ) : null}
         </View>
 
+        {/* معرف الحساب العام (14 رقم) — بيظهر بعد تطبيق هجرة v1.6.0 */}
+        {user.public_id ? (
+          <TouchableOpacity
+            style={styles.accountIdRow}
+            onPress={async () => {
+              await Clipboard.setStringAsync(String(user.public_id));
+              appAlert('✓', t('profile.accountIdCopied'));
+            }}>
+            <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
+              {t('profile.accountId')}
+            </Text>
+            <Text
+              style={{
+                color: colors.text,
+                fontSize: fonts.sizes.sm,
+                fontFamily: 'monospace',
+              }}>
+              {String(user.public_id)} 📋
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
         <Text style={styles.section}>🎁 {t('userProfile.receivedGifts')}</Text>
         {gifts.length === 0 ? (
           <Text style={{ color: colors.muted }}>{t('userProfile.noGifts')}</Text>
@@ -214,7 +241,7 @@ export default function UserProfile() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   notFound: {
     color: colors.muted,
     textAlign: 'center',
@@ -253,4 +280,16 @@ const styles = StyleSheet.create({
   giftItem: { alignItems: 'center', width: 72, gap: 4 },
   giftImg: { width: 56, height: 56, borderRadius: 12 },
   row: { paddingVertical: spacing.md },
+  accountIdRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    borderRadius: radius.md,
+  },
 });

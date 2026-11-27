@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { appAlert } from '../lib/dialog';
@@ -15,8 +15,10 @@ import {
   updatePrivacySetting,
   uploadAvatar,
 } from '../services/profile';
-import { colors, fonts, radius, spacing } from '../theme';
+import { fonts, radius, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 const USERNAME_RE = /^[a-z0-9_.]{3,24}$/;
 
 export default function EditProfile() {
@@ -26,6 +28,8 @@ export default function EditProfile() {
 }
 
 function EditProfileForm({ profile }: { profile: Profile }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { refreshProfile } = useAuth();
   const [displayName, setDisplayName] = useState(profile.display_name ?? '');
@@ -247,7 +251,7 @@ function EditProfileForm({ profile }: { profile: Profile }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   title: {
     color: colors.text,
     fontSize: fonts.sizes.xl,

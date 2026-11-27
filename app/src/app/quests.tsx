@@ -1,13 +1,17 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { NeonButton, Screen } from '../components/ui';
 import { appAlert } from '../lib/dialog';
 import { claimQuest, fetchQuests, type Quest } from '../services/economy';
-import { colors, fonts, radius, spacing } from '../theme';
+import { fonts, radius, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 export default function Quests() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const [quests, setQuests] = useState<Quest[]>([]);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -87,7 +91,7 @@ export default function Quests() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   title: {
     color: colors.text,
     fontSize: fonts.sizes.xl,

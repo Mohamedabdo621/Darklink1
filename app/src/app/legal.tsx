@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text } from 'react-native';
 import { Screen } from '../components/ui';
-import { colors, fonts, spacing } from '../theme';
+import { fonts, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 const PRIVACY_AR = `سياسة الخصوصية — DARKLINK
 
 ١. هويتك: عند اختيار الوضع المجهول لا نعرض اسمك الحقيقي أو بريدك لأي مستخدم آخر، في التطبيق أو عبر واجهات البرمجة. يظهر للآخرين اسمك المستعار فقط.
@@ -32,6 +34,8 @@ Terms of Use
 3. Gem purchases in the preview build run in Sandbox mode — no real money is charged.`;
 
 export default function Legal() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const ar = true; // تُعرض النصوص حسب لغة الواجهة عند النشر — حاليًا العربية افتراضيًا
   return (
     <Screen>
@@ -43,7 +47,7 @@ export default function Legal() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   h: { fontSize: 30, marginVertical: spacing.md },
   body: {
     color: colors.text,

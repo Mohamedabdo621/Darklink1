@@ -23,6 +23,10 @@ export interface Profile {
   is_admin: boolean;
   is_suspended: boolean;
   language: Language;
+  /** تفضيل الثيم: light | dark | system — يُزامَن من ThemeContext (عمود اختياري) */
+  theme_preference?: 'light' | 'dark' | 'system' | null;
+  /** معرف الحساب العام: 14 رقم للعرض — الـ UUID الداخلي (id) ميتغيرش */
+  public_id?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -38,6 +42,8 @@ export interface PublicProfile {
   is_vip: boolean;
   interests?: string[];
   last_seen_at?: string | null;
+  /** معرف الحساب العام: 14 رقم للعرض (بيوصل من RPC بعد تطبيق هجرة v1.6.0) */
+  public_id?: number | null;
   created_at: string;
 }
 
@@ -143,6 +149,8 @@ export interface Message {
   is_deleted: boolean;
   read_at: string | null;
   reply_to_id: string | null;
+  /** وقت آخر تعديل — null لو لم تُعدَّل (عمود اختياري حتى تطبيق الـ migration) */
+  edited_at?: string | null;
   created_at: string;
   /** تُملأ من العميل بعد الجلب — ليست عمودًا في القاعدة */
   reply_preview?: ReplyPreview | null;

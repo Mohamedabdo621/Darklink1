@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useState, useSyncExternalStore, useMemo } from 'react';
 import {
   Modal,
   Pressable,
@@ -18,13 +18,17 @@ import {
   subscribeDialog,
   type AppDialogButton,
 } from '../lib/dialog';
-import { colors, fonts, radius, shadowGlow, spacing } from '../theme';
+import { fonts, radius, shadowGlow, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 /**
  * عارض النوافذ المنبثقة بستايل DARKLINK — يُركَّب مرة واحدة في جذر التطبيق.
  * الاستخدام من أي مكان: appAlert / appPrompt من lib/dialog.
  */
 export default function AppDialog() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const dialog = useSyncExternalStore(subscribeDialog, getDialog);
   const [pv, setPv] = useState<{ id: number; v: string }>({ id: 0, v: '' });
@@ -78,6 +82,8 @@ export default function AppDialog() {
                     placeholderTextColor={colors.faint}
                     style={styles.promptInput}
                     autoFocus
+                    secureTextEntry={dialog.prompt.secure}
+                    keyboardType={dialog.prompt.numeric ? 'number-pad' : 'default'}
                   />
                   <View style={styles.rowBtns}>
                     <TouchableOpacity
@@ -166,7 +172,7 @@ export default function AppDialog() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(3,0,8,0.72)',

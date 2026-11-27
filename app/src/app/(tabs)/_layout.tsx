@@ -1,12 +1,14 @@
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Tabs, TabList, TabTrigger, TabSlot } from 'expo-router/ui';
 import type { TabTriggerSlotProps } from 'expo-router/ui';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
-import { colors, fonts } from '../../theme';
+import { fonts } from '../../theme';
 
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../theme';
 // شريط تبويبات سفلي زجاجي بأيقونات خطية متوهجة (ستايل Muse)
 // (مبني على Tabs المدمج في expo-router/ui — بديل material-top-tabs الذي كان
 // يفشل عند التسجيل: Couldn't register the navigator)
@@ -22,6 +24,8 @@ const TabButton = forwardRef<
   any,
   TabTriggerSlotProps & { icon: string; iconFocused: string; label: string }
 >(function TabButton({ icon, iconFocused, label, isFocused, ...props }, ref) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <Pressable
       ref={ref}
@@ -54,6 +58,8 @@ const TabButton = forwardRef<
 });
 
 export default function TabsLayout() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   return (
     <Tabs>
@@ -77,10 +83,10 @@ export default function TabsLayout() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   bar: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(13, 2, 24, 0.88)',
+    backgroundColor: colors.tabBar,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.glassBorder,
     height: 62,

@@ -1,6 +1,42 @@
 // DARKLINK — نظام التصميم: Deep Black × Neon Purple × Glassmorphism
 // (ستايل Muse المرجعي: أسود فضائي عميق، توهج نيون، زجاج، حركات ناعمة)
-export const colors = {
+// v1.6.0: نظام ثيمات فاتح/داكن — نفس الهوية (تدرج السلسلة البنفسجي)
+// في الوضعين، والفاتح يستخدم بطاقات بيضاء بظل بنفسجي خفيف بدل التوهج.
+import type { TextStyle, ViewStyle } from 'react-native';
+
+export type ThemeMode = 'light' | 'dark' | 'system';
+export type ResolvedMode = 'light' | 'dark';
+
+export interface ThemePalette {
+  bg: string;
+  bgDeep: string;
+  surface: string;
+  surfaceLight: string;
+  glass: string;
+  glassStrong: string;
+  glassBorder: string;
+  glassBorderStrong: string;
+  card: string;
+  stroke: string;
+  primary: string;
+  primaryBright: string;
+  accent: string;
+  magenta: string;
+  pink: string;
+  violet: string;
+  cyan: string;
+  gold: string;
+  text: string;
+  muted: string;
+  faint: string;
+  danger: string;
+  success: string;
+  white: string;
+  /** خلفية شريط التبويبات السفلي (شبه شفافة) */
+  tabBar: string;
+}
+
+export const darkColors: ThemePalette = {
   bg: '#030014',
   bgDeep: '#02000a',
   surface: '#0d0221',
@@ -26,7 +62,42 @@ export const colors = {
   danger: '#fb4d6d',
   success: '#34d399',
   white: '#ffffff',
-} as const;
+  tabBar: 'rgba(13, 2, 24, 0.88)',
+};
+
+/** الوضع الفاتح: أبيض-لافندر، نص بنفسجي غامق، نفس التدرج البنفسجي للأزرار */
+export const lightColors: ThemePalette = {
+  bg: '#faf7ff',
+  bgDeep: '#f3eefe',
+  surface: '#ffffff',
+  surfaceLight: '#f1e9fd',
+  glass: 'rgba(124, 58, 237, 0.06)',
+  glassStrong: 'rgba(124, 58, 237, 0.10)',
+  glassBorder: 'rgba(124, 58, 237, 0.16)',
+  glassBorderStrong: 'rgba(168, 85, 247, 0.45)',
+  card: 'rgba(124, 58, 237, 0.07)',
+  stroke: 'rgba(124, 58, 237, 0.22)',
+  primary: '#a855f7',
+  primaryBright: '#9333ea',
+  accent: '#c026d3',
+  magenta: '#d946ef',
+  pink: '#db2777',
+  violet: '#7c3aed',
+  cyan: '#0891b2',
+  gold: '#d97706',
+  text: '#2a0a4a',
+  muted: '#6b5a8a',
+  faint: '#9a8ab5',
+  danger: '#e11d48',
+  success: '#059669',
+  white: '#ffffff',
+  tabBar: 'rgba(255, 255, 255, 0.92)',
+};
+
+/** اللوحة الافتراضية (الداكنة) — للتوافق مع أي كود لم يُهاجَر بعد */
+export const colors: ThemePalette = darkColors;
+
+export type ThemeColors = ThemePalette;
 
 export const gradients = {
   primary: ['#7c3aed', '#a855f7', '#e879f9'] as const,
@@ -48,7 +119,7 @@ export const fonts = {
   weights: { regular: '400', medium: '600', bold: '700', black: '900' },
 } as const;
 
-export const shadowGlow = {
+export const shadowGlow: ViewStyle = {
   shadowColor: '#a855f7',
   shadowOffset: { width: 0, height: 0 },
   shadowOpacity: 0.55,
@@ -56,7 +127,7 @@ export const shadowGlow = {
   elevation: 10,
 };
 
-export const shadowGlowSoft = {
+export const shadowGlowSoft: ViewStyle = {
   shadowColor: '#7c3aed',
   shadowOffset: { width: 0, height: 4 },
   shadowOpacity: 0.35,
@@ -64,7 +135,7 @@ export const shadowGlowSoft = {
   elevation: 6,
 };
 
-export const shadowGlowGold = {
+export const shadowGlowGold: ViewStyle = {
   shadowColor: '#fbbf24',
   shadowOffset: { width: 0, height: 0 },
   shadowOpacity: 0.45,
@@ -72,9 +143,40 @@ export const shadowGlowGold = {
   elevation: 8,
 };
 
+/** نسخ أخف من الظلال للوضع الفاتح (ظل بنفسجي خفيف بدل التوهج) */
+export const lightShadowGlow: ViewStyle = {
+  shadowColor: '#7c3aed',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.18,
+  shadowRadius: 12,
+  elevation: 4,
+};
+
+export const lightShadowGlowSoft: ViewStyle = {
+  shadowColor: '#7c3aed',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.12,
+  shadowRadius: 10,
+  elevation: 3,
+};
+
+export const lightShadowGlowGold: ViewStyle = {
+  shadowColor: '#d97706',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.2,
+  shadowRadius: 10,
+  elevation: 4,
+};
+
 // توهج نص نيون (للعناوين واللوجو)
-export const textGlow = {
+export const textGlow: TextStyle = {
   textShadowColor: 'rgba(232, 121, 249, 0.65)',
   textShadowOffset: { width: 0, height: 0 },
   textShadowRadius: 14,
+};
+
+export const lightTextGlow: TextStyle = {
+  textShadowColor: 'rgba(168, 85, 247, 0.30)',
+  textShadowOffset: { width: 0, height: 0 },
+  textShadowRadius: 8,
 };

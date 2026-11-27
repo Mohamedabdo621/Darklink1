@@ -1,12 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Logo, NeonButton, Screen } from '../../components/ui';
 import { requestPasswordReset, resendConfirmation } from '../../services/auth';
-import { colors, fonts, spacing } from '../../theme';
+import { fonts, spacing } from '../../theme';
 
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../theme';
 export default function CheckEmail() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { email = '', mode = 'signup' } = useLocalSearchParams<{
     email: string;
@@ -63,7 +67,7 @@ export default function CheckEmail() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   title: {
     color: colors.text,
     fontSize: fonts.sizes.xxl,

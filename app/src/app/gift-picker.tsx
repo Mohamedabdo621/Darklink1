@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { FlatList, Image, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { appAlert } from '../lib/dialog';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -9,9 +10,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { giftEmoji, giftImage } from '../lib/giftAssets';
 import type { Gift } from '../lib/types';
 import { fetchGiftsCatalog, fetchWallet, sendGift } from '../services/wallet';
-import { colors, fonts, radius, spacing } from '../theme';
+import { fonts, radius, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 export default function GiftPicker() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const { profile: me } = useAuth();
@@ -58,6 +63,7 @@ export default function GiftPicker() {
             const res = await sendGift(userId, gift.id);
             setBusyId(null);
             if (res.ok) {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
               if (res.balance !== undefined) setBalance(res.balance);
               setSentGift(gift);
             } else if (res.error === 'insufficient') {
@@ -133,7 +139,7 @@ export default function GiftPicker() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   title: {
     color: colors.text,
     fontSize: fonts.sizes.xl,

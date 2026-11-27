@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -6,8 +6,10 @@ import { Screen } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import type { PaymentOrder } from '../services/admin';
 import { fetchMyOrders } from '../services/economy';
-import { colors, fonts, radius, spacing } from '../theme';
+import { fonts, radius, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 const STATUS_COLOR: Record<string, string> = {
   pending: '#fbbf24',
   approved: '#34d399',
@@ -15,6 +17,8 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function MyOrders() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { profile: me } = useAuth();
   const [orders, setOrders] = useState<PaymentOrder[]>([]);
@@ -73,7 +77,7 @@ export default function MyOrders() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   title: {
     color: colors.text,
     fontSize: fonts.sizes.xl,

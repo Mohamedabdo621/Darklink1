@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import {
   FlatList,
   StyleSheet,
@@ -16,8 +16,10 @@ import { appAlert } from '../../lib/dialog';
 import type { Transaction } from '../../lib/types';
 import { redeemPromo } from '../../services/economy';
 import { fetchTransactions, fetchWallet } from '../../services/wallet';
-import { colors, fonts, radius, spacing } from '../../theme';
+import { fonts, radius, spacing } from '../../theme';
 
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../theme';
 const TX_ICON: Record<Transaction['type'], string> = {
   purchase: '💎',
   gift_sent: '🎁',
@@ -41,6 +43,8 @@ const TX_KEY: Record<Transaction['type'], string> = {
 };
 
 export default function WalletTab() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { profile: me } = useAuth();
   const [balance, setBalance] = useState(0);
@@ -185,7 +189,7 @@ export default function WalletTab() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   title: {
     color: colors.text,
     fontSize: fonts.sizes.xl,

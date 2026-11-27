@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   Image,
   ScrollView,
@@ -39,8 +39,10 @@ import {
 } from '../services/admin';
 import { deletePost } from '../services/timeline';
 import type { PostReportRow, ReferralRow } from '../lib/types';
-import { colors, fonts, radius, spacing } from '../theme';
+import { fonts, radius, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 type Section = 'overview' | 'orders' | 'users' | 'reports' | 'referrals' | 'postReports' | 'promos' | 'settings';
 
 const CONFIG_FIELDS: { key: string; labelKey: string; numeric?: boolean }[] = [
@@ -58,6 +60,8 @@ const CONFIG_FIELDS: { key: string; labelKey: string; numeric?: boolean }[] = [
 ];
 
 export default function Admin() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { profile: me } = useAuth();
   const [section, setSection] = useState<Section>('overview');
@@ -554,7 +558,7 @@ export default function Admin() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   title: {
     color: colors.text,
     fontSize: fonts.sizes.xl,

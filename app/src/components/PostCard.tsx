@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   Animated,
   Image,
@@ -13,11 +13,14 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { GlowCard, GradientRing } from './ui';
 import { appAlert, appPrompt } from '../lib/dialog';
+import { loadDataSaver } from '../lib/dataSaver';
 import type { Post } from '../lib/types';
 import { avatarSignedUrl } from '../services/profile';
 import { deletePost, postMediaUrl, reportPost, togglePostLike } from '../services/timeline';
-import { colors, fonts, radius, spacing } from '../theme';
+import { fonts, radius, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 const BURST_HEARTS = [
   { left: '18%', delay: 0, size: 18 },
   { left: '32%', delay: 90, size: 24 },
@@ -49,11 +52,16 @@ export default function PostCard({
   onDeleted: (id: string) => void;
   onOpenComments: (p: Post) => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const [liked, setLiked] = useState(post.liked_by_me);
   const [likes, setLikes] = useState(post.likes_count);
   const [imgUrl, setImgUrl] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  // توفير البيانات: صورة البوست متنزلش إلا لما المستخدم يدوس عليها
+  const [dataSaver, setDataSaver] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
   const lastTap = useRef(0);
 
   // دخول ناعم للبوست الجديد
@@ -70,8 +78,13 @@ export default function PostCard({
   }, [enter]);
 
   useEffect(() => {
+    loadDataSaver().then(setDataSaver);
+  }, []);
+
+  useEffect(() => {
     let alive = true;
-    if (post.media_path) {
+    // وضع توفير البيانات: متنزلش صورة البوست إلا لما المستخدم يدوس عليها
+    if (post.media_path && (!dataSaver || imgLoaded)) {
       postMediaUrl(post.media_path).then((u) => {
         if (alive) setImgUrl(u);
       });
@@ -84,7 +97,7 @@ export default function PostCard({
     return () => {
       alive = false;
     };
-  }, [post.media_path, post.avatar_url]);
+  }, [post.media_path, post.avatar_url, dataSaver, imgLoaded]);
 
   const burst = useCallback(() => {
     bigHeart.setValue(0);
@@ -229,6 +242,15 @@ export default function PostCard({
           </View>
         </TouchableOpacity>
 
+        {post.media_path && dataSaver && !imgLoaded ? (
+          <TouchableOpacity
+            style={styles.tapToLoad}
+            onPress={() => setImgLoaded(true)}>
+            <Text style={{ fontSize: 30 }}>🖼</Text>
+            <Text style={styles.tapToLoadText}>↓ {t('chat.tapToLoad')}</Text>
+          </TouchableOpacity>
+        ) : null}
+
         <View style={styles.actions}>
           <TouchableOpacity onPress={doLike} style={styles.actionBtn}>
             <Animated.View style={{ transform: [{ scale: likePop }] }}>
@@ -253,7 +275,7 @@ export default function PostCard({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   card: { marginBottom: spacing.md },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   avatar: { width: 38, height: 38, borderRadius: 19 },
@@ -274,6 +296,20 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     backgroundColor: colors.surfaceLight,
   },
+  /** مكان صورة البوست في وضع توفير البيانات — دوس لتحميلها */
+  tapToLoad: {
+    width: '100%',
+    height: 160,
+    borderRadius: radius.lg,
+    marginTop: spacing.sm,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  tapToLoadText: { color: colors.muted, fontSize: fonts.sizes.sm },
   burstLayer: {
     position: 'absolute',
     top: 0,

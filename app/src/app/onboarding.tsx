@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import {
   Dimensions,
   FlatList,
@@ -13,12 +13,16 @@ import { useTranslation } from 'react-i18next';
 import { Logo, NeonButton, Screen } from '../components/ui';
 import { setLanguage } from '../i18n';
 import type { Language } from '../lib/types';
-import { colors, fonts, radius, spacing } from '../theme';
+import { fonts, radius, spacing } from '../theme';
 import { ONBOARDING_KEY } from './index';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 const { width } = Dimensions.get('window');
 
 export default function Onboarding() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t, i18n } = useTranslation();
   const [page, setPage] = useState(0);
   const listRef = useRef<FlatList>(null);
@@ -121,7 +125,7 @@ export default function Onboarding() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   tagline: {
     color: colors.muted,
     fontSize: fonts.sizes.sm,

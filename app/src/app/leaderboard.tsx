@@ -1,14 +1,18 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Screen } from '../components/ui';
 import { fetchLeaderboard, type LeaderRow } from '../services/features';
 import { avatarSignedUrl } from '../services/profile';
-import { colors, fonts, spacing } from '../theme';
+import { fonts, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 /** لوحة شرف الهدايا — الأكثر إهداءً واستقبالًا في آخر ٧ أيام */
 export default function Leaderboard() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const [tab, setTab] = useState<'givers' | 'receivers'>('givers');
   const [givers, setGivers] = useState<LeaderRow[]>([]);
@@ -96,7 +100,7 @@ export default function Leaderboard() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { appAlert } from '../lib/dialog';
 import { router, useFocusEffect } from 'expo-router';
@@ -10,12 +10,16 @@ import { giftEmoji, giftImage } from '../lib/giftAssets';
 import type { GemPackage, Gift } from '../lib/types';
 import { activateVipTier } from '../services/economy';
 import { fetchGiftsCatalog, fetchPackages, fetchWallet } from '../services/wallet';
-import { colors, fonts, radius, spacing } from '../theme';
+import { fonts, radius, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 const VIP_SILVER_PRICE = 500;
 const VIP_GOLD_PRICE = 1000;
 
 export default function Store() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { profile: me, refreshProfile } = useAuth();
   const [packages, setPackages] = useState<GemPackage[]>([]);
@@ -201,7 +205,7 @@ export default function Store() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   title: {
     color: colors.text,
     fontSize: fonts.sizes.xl,

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   FlatList,
   Image,
@@ -18,9 +18,13 @@ import {
   fetchSentGifts,
   type GiftSendRow,
 } from '../services/wallet';
-import { colors, fonts, spacing } from '../theme';
+import { fonts, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 export default function GiftsHistory() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { profile: me } = useAuth();
   const [tab, setTab] = useState<'sent' | 'received'>('received');
@@ -99,7 +103,7 @@ export default function GiftsHistory() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   title: {
     color: colors.text,
     fontSize: fonts.sizes.xl,

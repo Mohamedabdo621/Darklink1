@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
@@ -7,10 +7,14 @@ import { NeonButton, Screen } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import { appAlert } from '../lib/dialog';
 import { createImageStory, createTextStory } from '../services/features';
-import { colors, fonts, radius, spacing } from '../theme';
+import { fonts, radius, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 /** إنشاء قصة جديدة (نصية أو صورة) — تختفي بعد ٢٤ ساعة */
 export default function StoryNew() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { profile: me } = useAuth();
   const [text, setText] = useState('');
@@ -74,7 +78,7 @@ export default function StoryNew() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',

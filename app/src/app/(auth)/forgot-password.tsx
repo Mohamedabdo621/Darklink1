@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { appAlert } from '../../lib/dialog';
@@ -6,9 +6,13 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Logo, NeonButton, NeonInput, Screen } from '../../components/ui';
 import { isValidEmail, requestPasswordReset } from '../../services/auth';
-import { colors, fonts, spacing } from '../../theme';
+import { fonts, spacing } from '../../theme';
 
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../theme';
 export default function ForgotPassword() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
@@ -55,7 +59,7 @@ ${res.raw}` : t(res.errorKey));
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   title: {
     color: colors.text,
     fontSize: fonts.sizes.xxl,

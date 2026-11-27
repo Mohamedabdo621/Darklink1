@@ -1,6 +1,7 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { colors, fonts, spacing } from '../theme';
+import { useTheme } from '../contexts/ThemeContext';
+import { fonts, spacing, type ThemeColors } from '../theme';
 
 // حاجز أخطاء: لو حصل خطأ برمجي أثناء عرض شاشة، نعرض نص الخطأ بدل ما يقفل التطبيق
 interface Props {
@@ -11,7 +12,7 @@ interface State {
   error: Error | null;
 }
 
-export class ErrorBoundary extends React.Component<Props, State> {
+class ErrorBoundaryInner extends React.Component<Props & { colors: ThemeColors }, State> {
   state: State = { error: null };
 
   static getDerivedStateFromError(error: Error): State {
@@ -23,6 +24,8 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   render() {
+    const { colors } = this.props;
+    const styles = makeStyles(colors);
     if (this.state.error) {
       const e = this.state.error;
       return (
@@ -44,7 +47,12 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 }
 
-const styles = StyleSheet.create({
+export function ErrorBoundary({ children }: Props) {
+  const { colors } = useTheme();
+  return <ErrorBoundaryInner colors={colors}>{children}</ErrorBoundaryInner>;
+}
+
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   wrap: { flex: 1, backgroundColor: colors.bg, paddingTop: 60 },
   scroll: { padding: spacing.lg, gap: spacing.md },
   title: {

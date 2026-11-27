@@ -2,8 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { mediaSignedUrl } from '../services/chat';
-import { colors, fonts, radius, spacing } from '../theme';
+import { fonts, radius, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 const SPEEDS = [1, 1.5, 2];
 
 function fmt(sec: number) {
@@ -21,6 +23,8 @@ export default function VoiceBubble({
   durationSec: number | null;
   mine: boolean;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [uri, setUri] = useState<string | null>(null);
   const [speedIdx, setSpeedIdx] = useState(0);
   const player = useAudioPlayer(uri ? { uri } : null);
@@ -99,7 +103,7 @@ export default function VoiceBubble({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',

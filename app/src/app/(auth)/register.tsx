@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { appAlert } from '../../lib/dialog';
@@ -8,9 +8,13 @@ import { Logo, NeonButton, NeonInput, Screen } from '../../components/ui';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { isValidEmail, signUp } from '../../services/auth';
 import { bindReferral } from '../../services/economy';
-import { colors, fonts, spacing } from '../../theme';
+import { fonts, spacing } from '../../theme';
 
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../theme';
 export default function Register() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { ref } = useLocalSearchParams<{ ref?: string }>();
   const [email, setEmail] = useState('');
@@ -130,7 +134,7 @@ ${res.raw}` : t(res.errorKey));
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   subtitle: {
     color: colors.text,
     fontSize: fonts.sizes.xl,

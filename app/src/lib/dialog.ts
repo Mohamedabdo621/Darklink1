@@ -17,6 +17,10 @@ export interface AppDialogState {
   prompt?: {
     submitText: string;
     onSubmit: (value: string) => void;
+    /** إخفاء النص أثناء الكتابة (رمز PIN) */
+    secure?: boolean;
+    /** لوحة أرقام بدل لوحة الحروف */
+    numeric?: boolean;
   };
 }
 
@@ -69,13 +73,14 @@ export function appPrompt(
   message: string | undefined,
   submitText: string,
   onSubmit: (value: string) => void,
+  opts?: { secure?: boolean; numeric?: boolean },
 ) {
   current = {
     id: seq++,
     title,
     message,
     buttons: [],
-    prompt: { submitText, onSubmit },
+    prompt: { submitText, onSubmit, secure: opts?.secure, numeric: opts?.numeric },
   };
   emit();
 }

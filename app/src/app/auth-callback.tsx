@@ -1,15 +1,19 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Logo, NeonButton, Screen } from '../components/ui';
 import { handleAuthLink } from '../services/auth';
-import { colors, fonts, spacing } from '../theme';
+import { fonts, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 // نقطة هبوط لينكات الإيميل (darklink://auth-callback):
 // تفعيل الحساب → الرئيسية، استعادة كلمة المرور → شاشة تعيين كلمة مرور جديدة.
 export default function AuthCallback() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const params = useLocalSearchParams<Record<string, string>>();
   const [failed, setFailed] = useState(false);
@@ -70,7 +74,7 @@ export default function AuthCallback() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   text: {
     color: colors.text,
     fontSize: fonts.sizes.lg,

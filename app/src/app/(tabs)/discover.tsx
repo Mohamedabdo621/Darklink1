@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -17,12 +17,16 @@ import { INTEREST_KEYS } from '../../lib/interests';
 import type { PublicProfile } from '../../lib/types';
 import { avatarSignedUrl } from '../../services/profile';
 import { fetchDiscover, fetchPublicProfile } from '../../services/social';
-import { colors, fonts, radius, spacing } from '../../theme';
+import { fonts, radius, spacing } from '../../theme';
 
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../theme';
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default function Discover() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const [items, setItems] = useState<PublicProfile[]>([]);
   const [search, setSearch] = useState('');
@@ -144,6 +148,8 @@ export default function Discover() {
 }
 
 function DiscoverCard({ item }: { item: PublicProfile }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const [avatar, setAvatar] = useState<string | null>(null);
 
@@ -190,7 +196,7 @@ function DiscoverCard({ item }: { item: PublicProfile }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   filterChip: {
     borderWidth: 1,
     borderColor: colors.stroke,

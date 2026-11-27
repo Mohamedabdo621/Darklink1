@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,8 +21,10 @@ import { fetchTimeline } from '../../services/timeline';
 import { avatarSignedUrl } from '../../services/profile';
 import { fetchPublicProfile } from '../../services/social';
 import { fetchUnreadNotifications } from '../../services/wallet';
-import { colors, fonts, radius, shadowGlow, spacing, textGlow } from '../../theme';
+import { fonts, radius, shadowGlow, spacing, textGlow } from '../../theme';
 
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../theme';
 interface StoryGroup {
   userId: string;
   user: PublicProfile | null;
@@ -32,6 +34,8 @@ interface StoryGroup {
 }
 
 export default function Home() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { profile } = useAuth();
   const [wallet, setWallet] = useState<Wallet | null>(null);
@@ -366,6 +370,8 @@ function Shortcut({
   label: string;
   onPress: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <TouchableOpacity onPress={onPress} style={styles.shortcut}>
       <Ionicons name={icon as never} size={26} color={colors.primaryBright} />
@@ -374,7 +380,7 @@ function Shortcut({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',

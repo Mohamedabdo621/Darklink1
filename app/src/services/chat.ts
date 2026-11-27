@@ -253,6 +253,36 @@ export async function softDeleteMessage(messageId: string): Promise<boolean> {
   return !error;
 }
 
+/** تعديل رسالة نصية خاصة بي (خلال 15 دقيقة من الإرسال — يتحقق منه
+ *  واجهة الشات). يضبط edited_at؛ لو العمود لسه مش موجود في القاعدة
+ *  (قبل الـ migration) التحديث بيفشل وبيرجع false. */
+export async function editMessage(
+  messageId: string,
+  body: string,
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('messages')
+    .update({ body: body.trim(), edited_at: new Date().toISOString() })
+    .eq('id', messageId);
+  return !error;
+}
+
+/** وسائط المحادثة (صور/فيديو) لشاشة "الوسائط المشاركة" */
+export async function fetchConversationMedia(
+  conversationId: string,
+): Promise<Message[]> {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('conversation_id', conversationId)
+    .in('type', ['image', 'video'])
+    .eq('is_deleted', false)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) return [];
+  return (data ?? []) as Message[];
+}
+
 const mediaCache = new Map<string, { url: string; at: number }>();
 
 /** رابط موقّع لعرض وسائط محادثة أو رسالة صوتية */

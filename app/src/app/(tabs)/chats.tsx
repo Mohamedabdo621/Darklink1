@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   FlatList,
   Image,
@@ -25,8 +25,10 @@ import {
 } from '../../services/chat';
 import { avatarSignedUrl } from '../../services/profile';
 import { blockUser, fetchPublicProfile } from '../../services/social';
-import { colors, fonts, radius, spacing } from '../../theme';
+import { fonts, radius, spacing } from '../../theme';
 
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../theme';
 interface ChatRow {
   conversationId: string;
   other: PublicProfile | null;
@@ -40,6 +42,8 @@ interface ChatRow {
 }
 
 export default function Chats() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { profile: me } = useAuth();
   const [rows, setRows] = useState<ChatRow[]>([]);
@@ -276,7 +280,7 @@ export default function Chats() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   title: {
     color: colors.text,
     fontSize: fonts.sizes.xl,

@@ -1,5 +1,5 @@
-import React, { useCallback, useState } from 'react';
-import { Image, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useState, useMemo } from 'react';
+import { Image, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { router, useFocusEffect } from 'expo-router';
 import { TabSwipe } from '../../components/TabSwipe';
@@ -17,9 +17,13 @@ import {
 import { fetchMyReferralStats } from '../../services/timeline';
 import { ACHIEVEMENT_KEYS, fetchMyAchievements } from '../../services/features';
 import { avatarSignedUrl } from '../../services/profile';
-import { colors, fonts, radius, spacing } from '../../theme';
+import { fonts, radius, spacing } from '../../theme';
 
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../theme';
 export default function ProfileTab() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { profile } = useAuth();
   const [avatar, setAvatar] = useState<string | null>(null);
@@ -107,7 +111,19 @@ export default function ProfileTab() {
         </View>
 
         <GlowCard style={{ marginTop: spacing.lg }}>
-          <InfoRow label={t('profile.userId')} value={profile.id} mono />
+          <InfoRow
+            label={t('profile.accountId')}
+            value={profile.public_id ? String(profile.public_id) : '—'}
+            mono
+            onCopy={
+              profile.public_id
+                ? async () => {
+                    await Clipboard.setStringAsync(String(profile.public_id));
+                    appAlert('✓', t('profile.accountIdCopied'));
+                  }
+                : undefined
+            }
+          />
           <InfoRow
             label={t('profile.username')}
             value={profile.username ? `@${profile.username}` : '—'}
@@ -258,26 +274,45 @@ export default function ProfileTab() {
   );
 }
 
-function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function InfoRow({
+  label,
+  value,
+  mono,
+  onCopy,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  onCopy?: () => void;
+}) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.infoRow}>
       <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>{label}</Text>
-      <Text
-        selectable
-        style={{
-          color: colors.text,
-          fontSize: fonts.sizes.sm,
-          fontFamily: mono ? 'monospace' : undefined,
-          flexShrink: 1,
-          textAlign: 'right',
-        }}>
-        {value}
-      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
+        <Text
+          selectable
+          style={{
+            color: colors.text,
+            fontSize: fonts.sizes.sm,
+            fontFamily: mono ? 'monospace' : undefined,
+            flexShrink: 1,
+            textAlign: 'right',
+          }}>
+          {value}
+        </Text>
+        {onCopy ? (
+          <TouchableOpacity onPress={onCopy} hitSlop={8}>
+            <Text style={{ fontSize: 16 }}>📋</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   avatar: { width: 104, height: 104, borderRadius: 52 },
   avatarFallback: {
     backgroundColor: colors.surfaceLight,

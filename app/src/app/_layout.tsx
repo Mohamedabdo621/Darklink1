@@ -5,11 +5,31 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import AppDialog from '../components/AppDialog';
+import { AppLockGate } from '../components/AppLockGate';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { initI18n } from '../i18n';
 import { AuthProvider } from '../contexts/AuthContext';
+import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
 import { setNavReady, setupNotificationHandler } from '../services/push';
-import { colors } from '../theme';
+
+function ThemedRoot() {
+  const { colors, resolved } = useTheme();
+  return (
+    <>
+      <StatusBar style={resolved === 'light' ? 'dark' : 'light'} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.bg },
+          animation: 'slide_from_right',
+          gestureEnabled: true,
+        }}
+      />
+      <AppDialog />
+      <AppLockGate />
+    </>
+  );
+}
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
@@ -28,11 +48,11 @@ export default function RootLayout() {
       <View
         style={{
           flex: 1,
-          backgroundColor: colors.bg,
+          backgroundColor: '#030014',
           alignItems: 'center',
           justifyContent: 'center',
         }}>
-        <ActivityIndicator color={colors.primary} size="large" />
+        <ActivityIndicator color="#a855f7" size="large" />
       </View>
     );
   }
@@ -42,16 +62,9 @@ export default function RootLayout() {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <KeyboardProvider>
           <AuthProvider>
-            <StatusBar style="light" />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: colors.bg },
-                animation: 'slide_from_right',
-                gestureEnabled: true,
-              }}
-            />
-            <AppDialog />
+            <ThemeProvider>
+              <ThemedRoot />
+            </ThemeProvider>
           </AuthProvider>
         </KeyboardProvider>
       </GestureHandlerRootView>

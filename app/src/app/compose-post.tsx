@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { router } from 'expo-router';
@@ -7,9 +7,13 @@ import { useTranslation } from 'react-i18next';
 import { GlowCard, NeonButton, Screen } from '../components/ui';
 import { appAlert } from '../lib/dialog';
 import { createPost, pickPostImage } from '../services/timeline';
-import { colors, fonts, radius, spacing } from '../theme';
+import { fonts, radius, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 export default function ComposePost() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const [body, setBody] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -77,7 +81,7 @@ export default function ComposePost() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   title: {
     color: colors.text,
     fontSize: fonts.sizes.xl,

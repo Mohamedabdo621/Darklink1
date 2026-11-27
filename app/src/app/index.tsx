@@ -4,11 +4,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Redirect } from 'expo-router';
 import { useAuth } from '../contexts/AuthContext';
 import { Logo } from '../components/ui';
-import { colors } from '../theme';
 
+
+import { useTheme } from '../contexts/ThemeContext';
 const ONBOARDING_KEY = 'darklink.onboardingSeen';
 
 export default function Index() {
+  const { colors } = useTheme();
   const { session, loading } = useAuth();
   const [seen, setSeen] = useState<boolean | null>(null);
 

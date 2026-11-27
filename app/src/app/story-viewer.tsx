@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -14,10 +14,14 @@ import {
 } from '../services/features';
 import { avatarSignedUrl } from '../services/profile';
 import { fetchPublicProfile } from '../services/social';
-import { colors, fonts, gradients, spacing } from '../theme';
+import { fonts, gradients, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 /** عارض قصص مستخدم واحد: تقدم تلقائي + تنقل باللمس */
 export default function StoryViewer() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const { profile: me } = useAuth();
@@ -162,7 +166,7 @@ export default function StoryViewer() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000', paddingTop: 44 },
   bars: { flexDirection: 'row', gap: 4, paddingHorizontal: spacing.sm },
   barTrack: {

@@ -5,8 +5,10 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import LottieView from 'lottie-react-native';
 import { useTranslation } from 'react-i18next';
 import { giftAnimationFor } from '../lib/giftAnimations';
-import { colors, fonts, spacing } from '../theme';
+import { fonts, spacing } from '../theme';
 
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme';
 interface Props {
   visible: boolean;
   /** name_key الهدية (rose, teddy_bear, ...) — null يعني مفيش أنيميشن */
@@ -19,6 +21,8 @@ interface Props {
 }
 
 export default function GiftAnimation({ visible, giftNameKey, giftLabel, title, onClose }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const spec = useMemo(
     () => (giftNameKey ? giftAnimationFor(giftNameKey) : null),
@@ -61,7 +65,7 @@ export default function GiftAnimation({ visible, giftNameKey, giftLabel, title, 
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(3, 0, 20, 0.88)',
