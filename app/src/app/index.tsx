@@ -11,7 +11,7 @@ const ONBOARDING_KEY = 'darklink.onboardingSeen';
 
 export default function Index() {
   const { colors } = useTheme();
-  const { session, loading } = useAuth();
+  const { session, profile, loading } = useAuth();
   const [seen, setSeen] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -35,6 +35,8 @@ export default function Index() {
   }
 
   if (!seen) return <Redirect href="/onboarding" />;
+  // ملفه ناقص تاريخ الميلاد → صفحة إكمال البيانات قبل الدخول
+  if (session && !profile?.birthdate) return <Redirect href="/complete-profile" />;
   if (session) return <Redirect href="/(tabs)/home" />;
   return <Redirect href="/(auth)/login" />;
 }

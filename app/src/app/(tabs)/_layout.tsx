@@ -1,11 +1,13 @@
 import React, { forwardRef, useMemo } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
+import { Redirect } from 'expo-router';
 import { Tabs, TabList, TabTrigger, TabSlot } from 'expo-router/ui';
 import type { TabTriggerSlotProps } from 'expo-router/ui';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../../contexts/AuthContext';
 import { fonts, gradients, radius, spacing } from '../../theme';
 
 import { useTheme } from '../../contexts/ThemeContext';
@@ -62,6 +64,11 @@ export default function TabsLayout() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
+  const { session, profile, loading } = useAuth();
+  // ملفه ناقص تاريخ الميلاد → صفحة إكمال البيانات (بتغطي كمان الدخول من لينك تأكيد الإيميل)
+  if (!loading && session && !profile?.birthdate) {
+    return <Redirect href="/complete-profile" />;
+  }
   return (
     <Tabs>
       <TabSlot />

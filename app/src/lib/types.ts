@@ -16,6 +16,10 @@ export interface Profile {
   share_info: boolean;
   show_last_seen: boolean;
   interests: string[];
+  /** تاريخ الميلاد (YYYY-MM-DD) — يُجمع في صفحة إكمال البيانات بعد التسجيل */
+  birthdate: string | null;
+  /** الجنس — اختياري */
+  gender: 'male' | 'female' | 'prefer_not_to_say' | null;
   last_seen_at: string | null;
   is_vip: boolean;
   vip_until: string | null;
