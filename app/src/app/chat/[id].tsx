@@ -18,7 +18,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as Haptics from 'expo-haptics';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
-import Reanimated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
+import Reanimated, { useAnimatedStyle, useSharedValue, withSpring, type SharedValue } from 'react-native-reanimated';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import VoiceBubble from '../../components/VoiceBubble';
 import GiftAnimation from '../../components/GiftAnimation';
@@ -143,6 +143,14 @@ export default function ChatScreen() {
   const [dataSaver, setDataSaver] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [quickEmoji, setQuickEmoji] = useState('❤️');
+  /** شريط الإيموجي السريع بالسحب (زي فيسبوك): الإيموجي النشط تحت الصبع،
+   *  -1 يعني مفيش إيموجي نشط (الصبع برّه الشريط أو لسه ما اتحركش) */
+  const slideActive = useSharedValue(-1);
+  const slideRowWRef = useRef(0);
+  const slideRowHRef = useRef(0);
+  const slideIdxRef = useRef(-1);
+  /** الصبع اتحرك فعلًا على الشريط ولا مجرد دوسة من غير سحب */
+  const slideMovedRef = useRef(false);
   const [loadedIds, setLoadedIds] = useState<Record<string, boolean>>({});
   /** الرسالة المتظللة بعد النطّ ليها من اقتباس (وميض ذهبي ~1.6 ثانية) */
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -1147,6 +1155,55 @@ export default function ChatScreen() {
     sendQuickEmoji(e);
   };
 
+  /** شريط الإيموجي السريع بالسحب (زي فيسبوك): سطح لمس واحد — الصبع
+   *  لازم يتحرك على إيموجي، والرفع وهو على إيموجي بيبعته؛ الدوسة
+   *  من غير سحب مش بتبعت حاجة، والسحب برّه الشريط بيلغي */
+  const slideIndexFromEvent = (evt: GestureResponderEvent) => {
+    const { locationX, locationY } = evt.nativeEvent;
+    const w = slideRowWRef.current;
+    const h = slideRowHRef.current;
+    if (w <= 0) return -1;
+    if (locationY < -24 || locationY > h + 24) return -1;
+    const idx = Math.floor(locationX / (w / EMOJI_QUICK.length));
+    return idx >= 0 && idx < EMOJI_QUICK.length ? idx : -1;
+  };
+
+  const onSlideStart = (evt: GestureResponderEvent) => {
+    slideMovedRef.current = false;
+    const idx = slideIndexFromEvent(evt);
+    slideIdxRef.current = idx;
+    slideActive.value = idx;
+  };
+
+  const onSlideMove = (evt: GestureResponderEvent) => {
+    slideMovedRef.current = true;
+    const idx = slideIndexFromEvent(evt);
+    if (idx !== slideIdxRef.current) {
+      slideIdxRef.current = idx;
+      slideActive.value = idx;
+      if (idx >= 0) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+  };
+
+  const onSlideRelease = () => {
+    const idx = slideIdxRef.current;
+    slideActive.value = -1;
+    slideIdxRef.current = -1;
+    // دوسة من غير سحب — مش بتبعت، والشريط يفضل مفتوح
+    if (!slideMovedRef.current) return;
+    // اتسحب برّه الشريط — إلغاء من غير إرسال
+    if (idx < 0) {
+      setEmojiOpen(false);
+      return;
+    }
+    onPickQuickEmoji(EMOJI_QUICK[idx]);
+  };
+
+  const onSlideTerminate = () => {
+    slideActive.value = -1;
+    slideIdxRef.current = -1;
+  };
+
   /** بدء تحرير رسالة نصية خاصة بي (خلال 15 دقيقة من الإرسال) */
   const startEdit = (m: Message) => {
     if (m.type !== 'text' || m.is_deleted) return;
@@ -1537,11 +1594,20 @@ export default function ChatScreen() {
             </View>
           ) : null}
           {emojiOpen ? (
-            <View style={styles.emojiRowBar}>
-              {EMOJI_QUICK.map((e) => (
-                <TouchableOpacity key={e} onPress={() => onPickQuickEmoji(e)}>
-                  <Text style={{ fontSize: 26 }}>{e}</Text>
-                </TouchableOpacity>
+            <View
+              style={styles.emojiRowBar}
+              onLayout={(e) => {
+                slideRowWRef.current = e.nativeEvent.layout.width;
+                slideRowHRef.current = e.nativeEvent.layout.height;
+              }}
+              onStartShouldSetResponder={() => true}
+              onMoveShouldSetResponder={() => true}
+              onResponderGrant={onSlideStart}
+              onResponderMove={onSlideMove}
+              onResponderRelease={onSlideRelease}
+              onResponderTerminate={onSlideTerminate}>
+              {EMOJI_QUICK.map((e, i) => (
+                <SlideEmoji key={e} e={e} index={i} active={slideActive} />
               ))}
             </View>
           ) : null}
@@ -1916,6 +1982,28 @@ export default function ChatScreen() {
 }
 
 /** نقطة حمرا بتنبض أثناء التسجيل (ستايل واتساب) */
+/** إيموجي واحد في شريط السحب — بيكبر بنابض لما الصبع يعدّي عليه
+ *  (النشط ×1.7 ويطلع لفوق شوية، واللي جنبه ×1.2) زي فيسبوك */
+function SlideEmoji({ e, index, active }: { e: string; index: number; active: SharedValue<number> }) {
+  const style = useAnimatedStyle(() => {
+    const d = Math.abs(active.value - index);
+    const isActive = active.value === index;
+    const target = isActive ? 1.7 : d === 1 ? 1.2 : 1;
+    return {
+      transform: [
+        { scale: withSpring(target, { damping: 14, stiffness: 260 }) },
+        { translateY: withSpring(isActive ? -8 : 0, { damping: 14, stiffness: 260 }) },
+      ],
+    };
+  });
+  return (
+    <Reanimated.View
+      style={[{ width: 44, height: 48, alignItems: 'center', justifyContent: 'center' }, style]}>
+      <Text style={{ fontSize: 26 }}>{e}</Text>
+    </Reanimated.View>
+  );
+}
+
 function PulseDot() {
   const { colors } = useTheme();
   const [opacity] = useState(() => new Animated.Value(1));
