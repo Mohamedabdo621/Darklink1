@@ -2389,6 +2389,9 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     // بيستخدمه — والـ cast عشان 'none' مش في اتحاد أنواع RN.
     outlineWidth: 0,
     outlineStyle: 'none' as 'solid',
+    // فوق طبقة الـ BlurView: من غير zIndex نص الكتابة بيترسم تحت البلور
+    // فبيتغطى وبيبان مش موجود — البلور لازم يبقى تحت الكتابة مش فوقها
+    zIndex: 1,
   },
   /** حقل الكتابة الدائري: زجاجي بحد نيون وتوهج خفيف — زي المرجع */
   inputWrap: {
