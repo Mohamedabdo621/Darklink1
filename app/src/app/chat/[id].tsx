@@ -312,7 +312,18 @@ export default function ChatScreen() {
     void stopAndSendRecording();
   };
   const recTerminate = () => {
+    // النظام قتل اللمسة من برّه (سحب الشاشة/مكالمة/تنبيه) — عاملها زي
+    // الإفلات: لو كان بيسحب للإلغاء يلغي، ولو فيه تسجيل حقيقي يتبعت
+    // بدل ما يضيع، غير كده يلغي.
     recSessionRef.current += 1;
+    if (recDrag.dx <= REC_CANCEL_DX) {
+      void cancelRecording();
+      return;
+    }
+    if (recorder.isRecording && recState.durationMillis >= 1000) {
+      void stopAndSendRecording();
+      return;
+    }
     void cancelRecording();
   };
   const listRef = useRef<FlatList<Message | OutboxItem>>(null);
@@ -1186,6 +1197,7 @@ export default function ChatScreen() {
               <View
                 onStartShouldSetResponder={() => true}
                 onMoveShouldSetResponder={() => true}
+                onResponderTerminationRequest={() => false}
                 onResponderGrant={recGrant}
                 onResponderMove={recMove}
                 onResponderRelease={recRelease}
