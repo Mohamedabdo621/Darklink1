@@ -17,6 +17,7 @@ import type { ThemeColors } from '../../theme';
 // يفشل عند التسجيل: Couldn't register the navigator)
 const TABS = [
   { name: 'home', href: '/(tabs)/home', icon: 'home-outline', iconFocused: 'home', labelKey: 'tabs.home' },
+  { name: 'timeline', href: '/(tabs)/timeline', icon: 'newspaper-outline', iconFocused: 'newspaper', labelKey: 'tabs.timeline' },
   { name: 'discover', href: '/(tabs)/discover', icon: 'compass-outline', iconFocused: 'compass', labelKey: 'tabs.discover' },
   { name: 'chats', href: '/(tabs)/chats', icon: 'chatbubbles-outline', iconFocused: 'chatbubbles', labelKey: 'tabs.chats' },
   { name: 'wallet', href: '/(tabs)/wallet', icon: 'diamond-outline', iconFocused: 'diamond', labelKey: 'tabs.wallet' },

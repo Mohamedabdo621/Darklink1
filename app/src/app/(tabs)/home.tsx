@@ -6,11 +6,10 @@ import { TabSwipe } from '../../components/TabSwipe';
 import { useTranslation } from 'react-i18next';
 import { Chip, GlowCard, Logo, NeonButton, Screen } from '../../components/ui';
 import { Avatar } from '../../components/Avatar';
-import PostCard from '../../components/PostCard';
 import { useAuth } from '../../contexts/AuthContext';
 import { appAlert } from '../../lib/dialog';
 import { supabase } from '../../lib/supabase';
-import { shownNameOf, type Post, type PublicProfile, type Story, type Wallet } from '../../lib/types';
+import { shownNameOf, type PublicProfile, type Story, type Wallet } from '../../lib/types';
 import {
   checkAchievements,
   claimDailyReward,
@@ -18,11 +17,10 @@ import {
   fetchStories,
   type DailyStatus,
 } from '../../services/features';
-import { fetchTimeline } from '../../services/timeline';
 import { avatarSignedUrl } from '../../services/profile';
 import { fetchPublicProfile } from '../../services/social';
 import { fetchUnreadNotifications } from '../../services/wallet';
-import { fonts, lightShadowGlowSoft, radius, shadowGlow, shadowGlowSoft, spacing, textGlow } from '../../theme';
+import { fonts, lightShadowGlowSoft, radius, shadowGlowSoft, spacing, textGlow } from '../../theme';
 
 import { useTheme } from '../../contexts/ThemeContext';
 import type { ThemeColors } from '../../theme';
@@ -45,22 +43,6 @@ export default function Home() {
   const [daily, setDaily] = useState<DailyStatus | null>(null);
   const [claiming, setClaiming] = useState(false);
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [timelineBusy, setTimelineBusy] = useState(false);
-  const [timelineDone, setTimelineDone] = useState(false);
-
-  const loadTimeline = useCallback(async (before?: string) => {
-    setTimelineBusy(true);
-    const rows = await fetchTimeline(before);
-    setTimelineBusy(false);
-    if (rows.length < 20) setTimelineDone(true);
-    if (before) {
-      setPosts((prev) => [...prev, ...rows]);
-    } else {
-      setPosts(rows);
-      setTimelineDone(rows.length < 20);
-    }
-  }, []);
 
   const load = useCallback(async () => {
     if (!profile) return;
@@ -96,7 +78,6 @@ export default function Home() {
     }
     groups.sort((a, b) => Number(b.mine) - Number(a.mine));
     setStoryGroups(groups);
-    loadTimeline();
     // إنجازات جديدة؟
     const fresh = await checkAchievements();
     if (fresh.length) {
@@ -105,7 +86,7 @@ export default function Home() {
         fresh.map((k) => '• ' + t(`achievements.${k}`)).join('\n'),
       );
     }
-  }, [profile, t, loadTimeline]);
+  }, [profile, t]);
 
   const onClaim = async () => {
     setClaiming(true);
@@ -305,49 +286,7 @@ export default function Home() {
             onPress={() => router.push('/leaderboard')}
           />
         </View>
-
-        {/* التايم لاين */}
-        <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>
-          {t('timeline.title')}
-        </Text>
-        {posts.length === 0 && !timelineBusy ? (
-          <Text style={{ color: colors.muted, marginBottom: spacing.lg }}>
-            {t('timeline.noPosts')}
-          </Text>
-        ) : null}
-        {posts.map((p) => (
-          <PostCard
-            key={p.id}
-            post={p}
-            currentUserId={profile.id}
-            isAdmin={profile.is_admin}
-            onChanged={(np) =>
-              setPosts((prev) => prev.map((x) => (x.id === np.id ? np : x)))
-            }
-            onDeleted={(id) => setPosts((prev) => prev.filter((x) => x.id !== id))}
-            onOpenComments={(pp) => router.push({ pathname: '/post/[id]', params: { id: pp.id } })}
-          />
-        ))}
-        {!timelineDone && posts.length > 0 ? (
-          <View style={{ marginBottom: spacing.xl }}>
-            <NeonButton
-              title={t('common.loading')}
-              variant="ghost"
-              loading={timelineBusy}
-              onPress={() => loadTimeline(posts[posts.length - 1]?.created_at)}
-            />
-          </View>
-        ) : (
-          <View style={{ height: spacing.xxl }} />
-        )}
       </ScrollView>
-      {/* زر منشور جديد عايم فوق الشريط السفلي — زي الصورة المرجعية */}
-      <TouchableOpacity
-        onPress={() => router.push('/compose-post')}
-        style={styles.fab}
-        hitSlop={8}>
-        <Ionicons name="add" size={28} color={colors.white} />
-      </TouchableOpacity>
     </Screen>
     </TabSwipe>
   );
@@ -454,17 +393,4 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: spacing.sm,
   },
   shortcutLabel: { color: colors.text, fontSize: fonts.sizes.sm, fontWeight: fonts.weights.medium },
-  /** زر منشور جديد عايم — فوق الشريط السفلي على الطرف */
-  fab: {
-    position: 'absolute',
-    bottom: spacing.lg,
-    start: spacing.lg,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...shadowGlow,
-  },
 });

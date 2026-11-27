@@ -8,7 +8,7 @@ import { router } from 'expo-router';
 
 // التنقل بين التبويبات الرئيسية بالسحب يمين/شمال (بديل السحب المدمج
 // في material-top-tabs — يعمل مع Tabs المدمج في expo-router)
-const ORDER = ['home', 'discover', 'chats', 'wallet', 'profile'] as const;
+const ORDER = ['home', 'timeline', 'discover', 'chats', 'wallet', 'profile'] as const;
 
 export function TabSwipe({
   current,

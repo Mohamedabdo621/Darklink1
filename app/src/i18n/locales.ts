@@ -71,6 +71,7 @@ export const ar = {
   },
   tabs: {
     home: 'الرئيسية',
+    timeline: 'التايم لاين',
     discover: 'اكتشف',
     chats: 'المحادثات',
     wallet: 'المحفظة',
@@ -701,6 +702,7 @@ export const en: typeof ar = {
   },
   tabs: {
     home: 'Home',
+    timeline: 'Timeline',
     discover: 'Discover',
     chats: 'Chats',
     wallet: 'Wallet',
