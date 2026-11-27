@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { Animated, FlatList, Image, Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, FlatList, Image, Keyboard, Modal, Platform, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
@@ -2348,11 +2348,15 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(3,0,8,0.6)',
     justifyContent: 'flex-end',
+    // على الويب: ثبّت الخلفية على الشاشة — من غيره حاوية الـ Modal
+    // بتتمدد بطول الصفحة والورقة بتنزل تحت وبتتقص (قايمة الشات الـ 6 عناصر)
+    ...(Platform.OS === 'web'
+      ? ({ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 } as unknown as ViewStyle)
+      : null),
   },
   sheet: {
     backgroundColor: colors.surface,
-    borderTopStartRadius: 22,
-    borderTopEndRadius: 22,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: colors.stroke,
     padding: spacing.md,
@@ -2361,6 +2365,9 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     width: '100%',
     maxWidth: 480,
     alignSelf: 'center',
+    // حد أقصى للارتفاع + مسافة من حافة الشاشة عشان القايمة الطويلة ما تتقصش
+    maxHeight: '88%',
+    marginBottom: spacing.lg,
   },
   emojiRow: {
     flexDirection: 'row',
