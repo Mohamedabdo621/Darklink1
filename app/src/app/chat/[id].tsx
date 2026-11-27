@@ -77,8 +77,8 @@ interface GiftInfo {
 
 /** عتبات السحب المرنة للتسجيل الصوتي (واتساب: أي سحب واضح + إفلات = إلغاء/قفل،
  *  مش لازم توصل لمكان معين) */
-const REC_CANCEL_DX = -28;
-const REC_LOCK_DY = -28;
+const REC_CANCEL_DX = -60;
+const REC_LOCK_DY = -60;
 /** ضغطة أقصر من كده بتفتح واجهة التسجيل بالنقرة (مش إرسال ولا إلغاء — زي واتساب) */
 const REC_TAP_MS = 200;
 /** مصفوفة تفاعلات فارغة ثابتة — عشان الـ prop ما يتغيرش مع كل ريندر */
@@ -174,6 +174,9 @@ export default function ChatScreen() {
   const recStartPosRef = useRef({ x: 0, y: 0 });
   /** واجهة النقرة: إيقاف مؤقت / استئناف */
   const [recPaused, setRecPaused] = useState(false);
+  /** المدة المعروضة في مؤقت التسجيل — وقت الضغطة أثناء التجهيز،
+   *  ومدة المسجل بعد ما يبدأ (بتتزامن في effect تحت) */
+  const [recDisplayMs, setRecDisplayMs] = useState(0);
   /** الإصبع ضاغط على المايك دلوقتي — الزرار بيكبر طول الضغطة */
   const [micPressed, setMicPressed] = useState(false);
   /** ضغطة سريعة (<200ms) والتسجيل لسه بيجهز — لما record() يبدأ يفتح واجهة النقرة */
@@ -187,6 +190,9 @@ export default function ChatScreen() {
   /** تجهيز جاري — بيتشارك بين ضغطة المايك والتجهيز الخلفي بعد الإرسال
    *  عشان ما يبقاش فيه تجهيزين متوازيين */
   const recPreparePromiseRef = useRef<Promise<void> | null>(null);
+  /** إذن المايك — بيتطلب مرة واحدة عند فتح الشات وبيتخزّن هنا،
+   *  فالضغطة مش بتستناه كل مرة (كان جزء من تأخير بدء التسجيل) */
+  const recPermRef = useRef<boolean | null>(null);
 
   const failSend = () => appAlert(t('common.error'), t('chat.blockedNotice'));
 
@@ -233,7 +239,10 @@ export default function ChatScreen() {
       setMicPressed(false);
       setPhase('idle');
     };
-    const status = await AudioModule.requestRecordingPermissionsAsync();
+    const status = recPermRef.current === true
+      ? { granted: true }
+      : await AudioModule.requestRecordingPermissionsAsync();
+    recPermRef.current = status.granted;
     if (!status.granted) {
       abort();
       appAlert(t('common.error'), t('chat.micDenied'));
@@ -393,9 +402,19 @@ export default function ChatScreen() {
 
   /** مدة التسجيل الحالية بصيغة m:ss */
   const recSeconds = () => {
-    const s = Math.floor(recState.durationMillis / 1000);
+    const s = Math.floor(recDisplayMs / 1000);
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   };
+
+  /** مزامنة المؤقت المعروض: أثناء تجهيز أول ضغطة (مدة المسجل لسه صفر)
+   *  بيمشي من لحظة الضغطة، وبعدها بيمشي مع مدة المسجل */
+  useEffect(() => {
+    if (phase === 'recording' && recState.durationMillis === 0 && recPressAtRef.current) {
+      setRecDisplayMs(Date.now() - recPressAtRef.current);
+    } else {
+      setRecDisplayMs(recState.durationMillis);
+    }
+  }, [phase, recState.durationMillis]);
 
   /** أيقونة الإرسال (طيارة ورق) بتتعكس في العربي زي واتساب */
   const sendFlip: { transform: [{ scaleX: number }] } = {
@@ -587,10 +606,20 @@ export default function ChatScreen() {
   }, []);
 
   // ضبط الصوت مرة واحدة لما الشات يتفتح — مش مع كل ضغطة مايك
-  // (كان جزء من تأخير بدء التسجيل؛ الإذن لسه بيتطلب مع كل ضغطة)
+  // الإذن بيتطلب مرة واحدة عند فتح الشات + المسجل بيتجهز في الخلفية —
+  // أول ضغطة مايك تبدأ فورًا من غير انتظار الإذن/getUserMedia
   useEffect(() => {
     setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true }).catch(() => {});
-  }, []);
+    void (async () => {
+      try {
+        const st = await AudioModule.requestRecordingPermissionsAsync();
+        recPermRef.current = st.granted;
+        if (st.granted) await ensureRecPrepared();
+      } catch {
+        // الإذن/التجهيز يفضل للضغطة — هتطلبه عادي وقتها
+      }
+    })();
+  }, [ensureRecPrepared]);
 
   // هزة خفيفة عند دخول منطقة الإلغاء/القفل أثناء سحب التسجيل
   const prevRecZoneRef = useRef<'none' | 'cancel' | 'lock'>('none');
@@ -1375,6 +1404,9 @@ export default function ChatScreen() {
         ref={listRef}
         data={listData}
         inverted
+        // القايمة بتتجمد طول الضغطة على المايك — الرسايل ما تتسحبش
+        // مع صبعك وأنت بتسجل (زي واتساب)؛ بترجع أول ما ترفع إصبعك
+        scrollEnabled={phase !== 'recording'}
         keyExtractor={(m) => ('localId' in m ? m.localId : m.id)}
         contentContainerStyle={{ padding: spacing.md }}
         renderItem={renderItem}
@@ -1565,31 +1597,6 @@ export default function ChatScreen() {
                 <Ionicons name="trash-outline" size={26} color={colors.danger} />
               </View>
             ) : null}
-            {/* أيقونة القفل فوق زرار المايك طول الضغطة (باهتة) وبتتملي
-                تدريجيًا كل ما السحب لفوق يقرّب من القفل */}
-            {phase === 'recording' ? (
-              <View
-                pointerEvents="none"
-                style={[
-                  styles.recLockIcon,
-                  {
-                    opacity: recDrag.dy < -10 ? Math.min(1, -recDrag.dy / -REC_LOCK_DY) : 0.55,
-                    transform: [
-                      {
-                        scale:
-                          1 + (recDrag.dy < -10 ? Math.min(1, -recDrag.dy / 60) * 0.25 : 0),
-                      },
-                    ],
-                  },
-                ]}>
-                <Ionicons name="chevron-up" size={16} color={colors.muted} />
-                <Ionicons
-                  name={-recDrag.dy > 40 ? 'lock-closed' : 'lock-open-outline'}
-                  size={26}
-                  color={colors.primaryBright}
-                />
-              </View>
-            ) : null}
             {/* زرار + زجاجي دائري (بدل 📎) — نفس وظيفة الإرفاق،
                 بس بالشكل المرجعي؛ بيختفي وقت التسجيل/التحرير */}
             {phase === 'idle' && !editing ? (
@@ -1608,16 +1615,7 @@ export default function ChatScreen() {
                 style={[StyleSheet.absoluteFill, { borderRadius: radius.full }]}
               />
               {phase === 'recording' ? (
-                <View
-                  style={[
-                    styles.recIndicator,
-                    {
-                      transform: [
-                        { translateX: recDrag.dx },
-                        { translateY: recDrag.dy },
-                      ],
-                    },
-                  ]}>
+                <View style={styles.recIndicator}>
                   <PulseDot />
                   <Text style={styles.recTimer}>{recSeconds()}</Text>
                   <Text
@@ -1670,6 +1668,31 @@ export default function ChatScreen() {
                 onResponderRelease={recRelease}
                 onResponderTerminate={recTerminate}
                 style={{ padding: 4, margin: -4 }}>
+                {/* القفل فوق زرار المايك نفسه — مربوط بالمايك مش بموضع
+                    ثابت في الشاشة، فبيظهر فوقه على طول زي واتساب */}
+                {phase === 'recording' ? (
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.recLockIcon,
+                      {
+                        opacity: recDrag.dy < -10 ? Math.min(1, -recDrag.dy / -REC_LOCK_DY) : 0.55,
+                        transform: [
+                          {
+                            scale:
+                              1 + (recDrag.dy < -10 ? Math.min(1, -recDrag.dy / 60) * 0.25 : 0),
+                          },
+                        ],
+                      },
+                    ]}>
+                    <Ionicons name="chevron-up" size={16} color={colors.muted} />
+                    <Ionicons
+                      name={-recDrag.dy > 40 ? 'lock-closed' : 'lock-open-outline'}
+                      size={26}
+                      color={colors.primaryBright}
+                    />
+                  </View>
+                ) : null}
                 {/* الزرار بيكبر ×1.4 من أول لحظة الضغط ويفضل كبير طول
                     الضغطة، وبيبقى زجاجي بنفسجي وهو بيسجّل */}
                 <View
@@ -2668,12 +2691,14 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     marginTop: -13,
     zIndex: 1,
   },
-  /** أيقونة القفل اللي بتظهر فوق زرار المايك طول الضغطة (باهتة) وبتتملي
-   *  تدريجيًا كل ما السحب لفوق يقرّب من القفل */
+  /** أيقونة القفل فوق زرار المايك نفسه (باهتة طول الضغطة وبتتملي
+   *  تدريجيًا كل ما السحب لفوق يقرّب من القفل) — مربوطة بالمايك
+   *  بـ bottom: 100% فمستحيل تظهر في الناحية التانية من الشاشة */
   recLockIcon: {
     position: 'absolute',
-    left: 25,
-    bottom: 80,
+    bottom: '100%',
+    alignSelf: 'center',
+    marginBottom: 6,
     zIndex: 1,
     alignItems: 'center',
   },
