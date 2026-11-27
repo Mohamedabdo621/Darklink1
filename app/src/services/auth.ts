@@ -1,10 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import { supabase } from '../lib/supabase';
 
 // تأكيد البريد عندنا بلينك (مش كود): الخطة المجانية في Supabase لا تسمح
 // بتعديل قوالب الإيميل مع المرسل الافتراضي، فاخترنا تدفق اللينك (قرار Alex 2026-11-24).
-// اللينك يفتح التطبيق على darklink://auth-callback ونكمل الجلسة من هناك.
+// اللينك يفتح auth-callback (عنوان ويب على المتصفح، وعنوان التطبيق على الموبايل)
+// ونكمل الجلسة من هناك.
 export type AuthResult =
   | { ok: true; needsConfirm: boolean }
   | { ok: false; errorKey: string; raw?: string };
@@ -19,7 +21,14 @@ export const isValidEmail = (e: string) => EMAIL_RE.test(e.trim());
 
 const INTENT_KEY = 'darklink.authLinkIntent';
 
-export const authCallbackUrl = () => Linking.createURL('auth-callback');
+// على الويب لازم اللينك يبقى عنوان https عادي — عنوان التطبيق
+// (darklink://...) المتصفح مش بيعرف يفتحه، فاللينك كان بيضيع.
+export const authCallbackUrl = () => {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    return `${window.location.origin}/Darklink1/auth-callback`;
+  }
+  return Linking.createURL('auth-callback');
+};
 
 async function setIntent(intent: AuthLinkIntent): Promise<void> {
   try {

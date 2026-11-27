@@ -65,6 +65,8 @@ export const ar = {
     resetBody: 'اكتب بريدك وهنبعتلك لينك استعادة.',
     newPassword: 'كلمة المرور الجديدة',
     setNewPassword: 'تعيين كلمة المرور',
+    passwordChanged: 'تم تغيير كلمة المرور بنجاح',
+    requestNewLink: 'اطلب لينك جديد',
     logout: 'تسجيل الخروج',
   },
   tabs: {
@@ -693,6 +695,8 @@ export const en: typeof ar = {
     resetBody: 'Enter your email and we will send a recovery link.',
     newPassword: 'New password',
     setNewPassword: 'Set password',
+    passwordChanged: 'Your password has been changed',
+    requestNewLink: 'Request a new link',
     logout: 'Log out',
   },
   tabs: {

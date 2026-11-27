@@ -1,11 +1,12 @@
-import React, { useState, useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState, useMemo } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { appAlert } from '../../lib/dialog';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Logo, NeonButton, NeonInput, Screen } from '../../components/ui';
 import { setNewPassword } from '../../services/auth';
+import { supabase } from '../../lib/supabase';
 import { fonts, spacing } from '../../theme';
 
 import { useTheme } from '../../contexts/ThemeContext';
@@ -19,6 +20,20 @@ export default function SetPassword() {
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<{ password?: string; confirm?: string }>({});
+  const [checking, setChecking] = useState(true);
+  const [noSession, setNoSession] = useState(false);
+  const [done, setDone] = useState(false);
+
+  // اللينك لازم يفتح بجلسة قائمة — من غيرها مفيش كلمة سر تتغير.
+  // لو مفيش جلسة (لينك منتهي أو اتفتح قبل كده) بنقول كده بوضوح
+  // بدل ما الزرار يفشل بصمت.
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) setNoSession(true);
+      setChecking(false);
+    })();
+  }, []);
 
   const submit = async () => {
     const e: typeof errors = {};
@@ -35,7 +50,7 @@ export default function SetPassword() {
 ${res.raw}` : t(res.errorKey));
       return;
     }
-    router.replace('/(tabs)/home');
+    setDone(true);
   };
 
   return (
@@ -43,25 +58,44 @@ ${res.raw}` : t(res.errorKey));
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1, justifyContent: 'center' }}>
         <View style={{ alignItems: 'center', marginBottom: spacing.xl }}>
           <Logo size={30} />
-          <Text style={styles.title}>{t('auth.newPassword')}</Text>
+          <Text style={styles.title}>
+            {done
+              ? t('auth.passwordChanged')
+              : noSession
+                ? t('auth.invalidLink')
+                : t('auth.newPassword')}
+          </Text>
         </View>
-        <NeonInput
-          label={t('auth.newPassword')}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          error={errors.password}
-          placeholder="••••••••"
-        />
-        <NeonInput
-          label={t('auth.confirmPassword')}
-          value={confirm}
-          onChangeText={setConfirm}
-          secureTextEntry
-          error={errors.confirm}
-          placeholder="••••••••"
-        />
-        <NeonButton title={t('auth.setNewPassword')} onPress={submit} loading={busy} />
+        {checking ? (
+          <ActivityIndicator color={colors.primary} size="large" />
+        ) : done ? (
+          <NeonButton title={t('tabs.home')} onPress={() => router.replace('/(tabs)/home')} />
+        ) : noSession ? (
+          <NeonButton
+            title={t('auth.requestNewLink')}
+            onPress={() => router.replace('/(auth)/forgot-password')}
+          />
+        ) : (
+          <>
+            <NeonInput
+              label={t('auth.newPassword')}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              error={errors.password}
+              placeholder="••••••••"
+            />
+            <NeonInput
+              label={t('auth.confirmPassword')}
+              value={confirm}
+              onChangeText={setConfirm}
+              secureTextEntry
+              error={errors.confirm}
+              placeholder="••••••••"
+            />
+            <NeonButton title={t('auth.setNewPassword')} onPress={submit} loading={busy} />
+          </>
+        )}
       </KeyboardAvoidingView>
     </Screen>
   );

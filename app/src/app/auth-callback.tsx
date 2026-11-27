@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -9,7 +9,7 @@ import { fonts, spacing } from '../theme';
 
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme';
-// نقطة هبوط لينكات الإيميل (darklink://auth-callback):
+// نقطة هبوط لينكات الإيميل (ويب: /Darklink1/auth-callback، موبايل: darklink://auth-callback):
 // تفعيل الحساب → الرئيسية، استعادة كلمة المرور → شاشة تعيين كلمة مرور جديدة.
 export default function AuthCallback() {
   const { colors } = useTheme();
@@ -27,7 +27,11 @@ export default function AuthCallback() {
         ([, v]) => typeof v === 'string' && v.length > 0,
       );
       let url = '';
-      if (entries.length) {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        // على الويب التوكنات بتيجي في الـ hash (#access_token=...&type=recovery)
+        // وuseLocalSearchParams مش بيشوف الـ hash — فبنقرا العنوان كامل مباشرة.
+        url = window.location.href;
+      } else if (entries.length) {
         url =
           'darklink://auth-callback?' +
           entries.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
