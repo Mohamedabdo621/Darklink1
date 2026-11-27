@@ -149,7 +149,7 @@ export default function CompleteProfile() {
         setBirthErr(t('completeProfile.birthdateInvalid'));
         return;
       }
-      if (calcAge(new Date(iso)) < 18) {
+      if (calcAge(new Date(iso)) < 16) {
         setBirthErr('');
         setUnderage(true);
         return;
