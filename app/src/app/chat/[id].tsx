@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { Animated, FlatList, Image, Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
+import { Animated, FlatList, Image, Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
@@ -16,6 +16,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as Haptics from 'expo-haptics';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
+import Reanimated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import VoiceBubble from '../../components/VoiceBubble';
 import GiftAnimation from '../../components/GiftAnimation';
@@ -886,15 +887,11 @@ export default function ChatScreen() {
               maxWidth: '75%',
               marginBottom: gap,
             }}
-            renderLeftActions={() => (
-              <View style={styles.replyAction}>
-                <Text style={{ fontSize: 19 }}>↩</Text>
-              </View>
+            renderLeftActions={(progress) => (
+              <SwipeReplyArrow progress={progress} glyph="↩" style={styles.replyAction} />
             )}
-            renderRightActions={() => (
-              <View style={styles.replyAction}>
-                <Text style={{ fontSize: 19 }}>↪</Text>
-              </View>
+            renderRightActions={(progress) => (
+              <SwipeReplyArrow progress={progress} glyph="↪" style={styles.replyAction} />
             )}
             onSwipeableOpen={() => {
               startReply(item);
@@ -1776,6 +1773,27 @@ function RecWaveform({ metering, paused }: { metering?: number; paused: boolean 
   );
 }
 
+/** سهم الرد بالسحب: مخفي تمامًا والرسالة واقفة (شفافيته = تقدّم السحب،
+ *  0 عند الوقوف و1 عند السحب الكامل) — عشان الفقاعة الزجاجية شفافة
+ *  والسهم اللي وراها كان باين من خلالها على كل رسالة جديدة.
+ *  بيظهر تدريجيًا مع السحب بس، والرد نفسه زي ما هو. */
+function SwipeReplyArrow({
+  progress,
+  glyph,
+  style,
+}: {
+  progress: SharedValue<number>;
+  glyph: string;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const anim = useAnimatedStyle(() => ({ opacity: progress.value }));
+  return (
+    <Reanimated.View style={[style, anim]}>
+      <Text style={{ fontSize: 19 }}>{glyph}</Text>
+    </Reanimated.View>
+  );
+}
+
 const MessageBubble = React.memo(function MessageBubble({
   m,
   mine,
@@ -2088,8 +2106,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  /** المرسلة: بنفسجي شفاف 35% (65% عتامة) — النص والموجة والوقت
-   *  والصحات والشارة بيفضلوا 100% معتمين (الشفافية في الخلفية بس) */
+  /** المرسلة: بنفسجي هادئ معتم (primaryCalm) — مش شفاف (الشفافية اترفضت) */
   bubbleMine: {
     backgroundColor: colors.primaryCalm,
     borderWidth: 1,
