@@ -235,10 +235,9 @@ export default function PostCard({
   const doRepost = useCallback(async () => {
     const res = await repostPost(post.id);
     if (res.ok) {
-      appAlert('✓', t('timeline.reposted'));
       onReposted?.();
     }
-  }, [post, t, onReposted]);
+  }, [post, onReposted]);
 
   const doSave = useCallback(async () => {
     const res = await toggleSavePost(post.id);
