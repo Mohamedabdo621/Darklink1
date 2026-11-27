@@ -66,7 +66,7 @@ import {
   reportUser,
   unblockUser,
 } from '../../services/social';
-import { fonts, lightShadowGlowSoft, radius, sentBubble, shadowGlowSoft, spacing } from '../../theme';
+import { fonts, lightShadowGlowSoft, radius, shadowGlowSoft, spacing } from '../../theme';
 
 import { useTheme } from '../../contexts/ThemeContext';
 import type { ThemeColors } from '../../theme';
@@ -84,7 +84,18 @@ const REC_TAP_MS = 200;
 /** مصفوفة تفاعلات فارغة ثابتة — عشان الـ prop ما يتغيرش مع كل ريندر */
 const EMPTY_REACTIONS: { emoji: string; count: number; mine: boolean }[] = [];
 /** تدرج الفقاعة المرسلة (زي الصورة المرجعية): بنفسجي → فوشيا */
-const SENT_GRADIENT = sentBubble.gradient;
+const SENT_GRADIENT = ['#7c3aed', '#a855f7', '#d946ef'] as const;
+
+/** رسالة إيموجي بس (1–3 إيموجي، من غير كلام) — بتتعرض من غير فقاعة زي واتساب */
+function isEmojiOnly(text: string): boolean {
+  const stripped = text.trim().replace(/[\uFE0F\u200D]/g, '');
+  if (!stripped) return false;
+  const chars = Array.from(stripped);
+  if (chars.length < 1 || chars.length > 3) return false;
+  return chars.every(
+    (ch) => /\p{Extended_Pictographic}/u.test(ch) || /[\u{1F3FB}-\u{1F3FF}]/u.test(ch),
+  );
+}
 
 export default function ChatScreen() {
   const { colors, resolved } = useTheme();
@@ -2027,6 +2038,13 @@ const MessageBubble = React.memo(function MessageBubble({
 
   const time = formatTimeAr(m.created_at);
 
+  /** إيموجي بس من غير كلام ولا رد — من غير فقاعة (زي واتساب) */
+  const emojiOnly =
+    m.type === 'text' && !m.is_deleted && !m.reply_to_id && isEmojiOnly(m.body ?? '');
+  const emojiCount = emojiOnly
+    ? Array.from((m.body ?? '').trim().replace(/[\uFE0F\u200D]/g, '')).length
+    : 0;
+
   const bubbleStyle: StyleProp<ViewStyle> = [
     styles.bubble,
     mine ? styles.bubbleMine : styles.bubbleOther,
@@ -2037,14 +2055,14 @@ const MessageBubble = React.memo(function MessageBubble({
     <>
         {!m.is_deleted && m.reply_to_id ? (
           <TouchableOpacity
-            style={[styles.quote, mine && styles.quoteMine]}
+            style={styles.quote}
             activeOpacity={0.7}
             onPress={() => m.reply_to_id && onQuotePress?.(m.reply_to_id)}
             onLongPress={() => onLongPress(m)}>
-            <Text style={[styles.quoteName, mine && { color: sentBubble.name }]} numberOfLines={1}>
+            <Text style={styles.quoteName} numberOfLines={1}>
               {replyName ?? ''}
             </Text>
-            <Text style={[styles.quoteText, mine && { color: sentBubble.text }]} numberOfLines={1}>
+            <Text style={styles.quoteText} numberOfLines={1}>
               {replySnippet ?? ''}
             </Text>
           </TouchableOpacity>
@@ -2052,7 +2070,7 @@ const MessageBubble = React.memo(function MessageBubble({
         {m.is_deleted ? (
           <Text style={styles.deleted}>🚫 {t('chats.deleted')}</Text>
         ) : m.type === 'text' ? (
-          <Text style={[styles.msgText, mine && { color: sentBubble.text }]}>{m.body}</Text>
+          <Text style={[styles.msgText, mine && { color: colors.white }]}>{m.body}</Text>
         ) : m.type === 'image' ? (
           dataSaver && !forceLoad ? (
             <TouchableOpacity onPress={() => onLoadMedia(m.id)} style={styles.tapToLoad}>
@@ -2066,7 +2084,7 @@ const MessageBubble = React.memo(function MessageBubble({
           ) : (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="image-outline" size={18} color={colors.muted} />
-              <Text style={[styles.msgText, mine && { color: sentBubble.text }]}>…</Text>
+              <Text style={styles.msgText}>…</Text>
             </View>
           )
         ) : m.type === 'video' ? (
@@ -2088,13 +2106,13 @@ const MessageBubble = React.memo(function MessageBubble({
               ) : (
                 <Ionicons name="gift-outline" size={40} color={colors.accent} />
               )}
-              <Text style={[styles.msgText, mine && { color: sentBubble.text }]}>
+              <Text style={[styles.msgText, mine && { color: colors.white }]}>
                 {gift ? t(`gifts.${gift.name_key}`) : t('chats.gift')}
               </Text>
             </View>
           </TouchableOpacity>
         ) : null}
-        <Text style={[styles.time, mine && { color: sentBubble.time }]}>
+        <Text style={[styles.time, mine && { color: 'rgba(255,255,255,0.7)' }]}>
           {time}
           {m.edited_at ? ` • ${t('chat.edited')}` : ''}
           {mine && !m.is_deleted ? (m.read_at ? ' ✓✓' : ' ✓') : ''}
@@ -2119,6 +2137,41 @@ const MessageBubble = React.memo(function MessageBubble({
         ) : null}
     </>
   );
+  if (emojiOnly) {
+    return (
+      <TouchableOpacity onLongPress={() => onLongPress(m)} activeOpacity={0.85}>
+        <View style={[styles.emojiOnlyWrap, mine ? styles.emojiOnlyMine : styles.emojiOnlyOther]}>
+          <Text
+            style={{
+              fontSize: emojiCount === 1 ? 56 : 44,
+              lineHeight: emojiCount === 1 ? 64 : 52,
+            }}>
+            {m.body}
+          </Text>
+          <View style={styles.emojiOnlyMeta}>
+            <Text style={styles.emojiOnlyTime}>
+              {time}
+              {m.edited_at ? ` • ${t('chat.edited')}` : ''}
+              {mine && !m.is_deleted ? (m.read_at ? ' ✓✓' : ' ✓') : ''}
+            </Text>
+            {reactions.length ? (
+              <TouchableOpacity
+                style={styles.emojiOnlyBadge}
+                activeOpacity={0.8}
+                onPress={() => onReactPress(m, reactions[0].emoji)}>
+                <Text style={styles.reactionBadgeText}>
+                  {reactions.map((r) => r.emoji).join('')}
+                  {reactions.length === 1 && reactions[0].count > 1
+                    ? ` ${reactions[0].count}`
+                    : ''}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }
   return (
     <TouchableOpacity onLongPress={() => onLongPress(m)} activeOpacity={0.85}>
       <View style={!mine ? styles.receivedRow : undefined}>
@@ -2129,13 +2182,6 @@ const MessageBubble = React.memo(function MessageBubble({
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={bubbleStyle}>
-            {/* لمعة زجاجية فوق التدرج وتحت الكتابة — زي فقاعة الصورة المرجعية */}
-            <LinearGradient
-              colors={['rgba(255,255,255,0.6)', 'rgba(255,255,255,0.15)', 'rgba(255,255,255,0)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={[StyleSheet.absoluteFill, { borderRadius: radius.full, overflow: 'hidden' }]}
-            />
             {bubbleInner}
           </LinearGradient>
         ) : (
@@ -2158,6 +2204,31 @@ const PendingBubble = React.memo(function PendingBubble({ item }: { item: Outbox
       : item.type === 'voice'
         ? t('chat.voiceNote')
         : t('chat.sending');
+  // إيموجي بس معلّق: من غير فقاعة زي واتساب
+  if (item.type === 'text' && isEmojiOnly(item.body ?? '')) {
+    return (
+      <View
+        style={{
+          alignSelf: 'flex-end',
+          maxWidth: '75%',
+          marginBottom: 10,
+          opacity: 0.65,
+        }}>
+        <Text style={{ fontSize: 48, lineHeight: 56 }}>{item.body}</Text>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: 3,
+            marginTop: 3,
+          }}>
+          <Ionicons name="time-outline" size={11} color={colors.muted} />
+          <Text style={[styles.time, { marginTop: 0 }]}>{t('chat.sending')}</Text>
+        </View>
+      </View>
+    );
+  }
   return (
     <View
       style={{
@@ -2171,19 +2242,13 @@ const PendingBubble = React.memo(function PendingBubble({ item }: { item: Outbox
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[styles.bubble, styles.bubbleMine]}>
-        <LinearGradient
-          colors={['rgba(255,255,255,0.6)', 'rgba(255,255,255,0.15)', 'rgba(255,255,255,0)']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          style={[StyleSheet.absoluteFill, { borderRadius: radius.full, overflow: 'hidden' }]}
-        />
         {isMedia ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Ionicons name="image-outline" size={16} color={sentBubble.text} />
-            <Text style={[styles.msgText, { color: sentBubble.text }]}>{label}</Text>
+            <Ionicons name="image-outline" size={16} color={colors.white} />
+            <Text style={[styles.msgText, { color: colors.white }]}>{label}</Text>
           </View>
         ) : (
-          <Text style={[styles.msgText, { color: sentBubble.text }]}>{label}</Text>
+          <Text style={[styles.msgText, { color: colors.white }]}>{label}</Text>
         )}
         <View
           style={{
@@ -2193,8 +2258,8 @@ const PendingBubble = React.memo(function PendingBubble({ item }: { item: Outbox
             gap: 3,
             marginTop: 3,
           }}>
-          <Ionicons name="time-outline" size={11} color={sentBubble.time} />
-          <Text style={[styles.time, { color: sentBubble.time, marginTop: 0 }]}>
+          <Ionicons name="time-outline" size={11} color="rgba(255,255,255,0.7)" />
+          <Text style={[styles.time, { color: 'rgba(255,255,255,0.7)', marginTop: 0 }]}>
             {t('chat.sending')}
           </Text>
         </View>
@@ -2326,23 +2391,17 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     fontWeight: fonts.weights.bold,
   },
   quoteText: { color: colors.white, fontSize: fonts.sizes.xs, marginTop: 1 },
-  /** الاقتباس جوّه فقاعة مرسلة فاتحة: خلفية بيضاء شفافة بدل السوداء */
-  quoteMine: {
-    backgroundColor: 'rgba(255,255,255,0.55)',
-    borderStartColor: sentBubble.play,
-  },
   bubble: {
     borderRadius: radius.lg,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  /** المرسلة: فقاعة مجسّمة لافندر فاتح (زي الصورة المرجعية) — التدرج بيتطبق بـ
-   *  LinearGradient فمفيش backgroundColor هنا؛ حبة كاملة مستديرة من الطرفين
-   *  (من غير ذيل)، حد أبيض شفاف + توهج خفيف */
+  /** المرسلة: تدرج بنفسجي → فوشيا (زي الصورة المرجعية) — بيتطبق بـ
+   *  LinearGradient، فمفيش backgroundColor هنا؛ حد نيون + توهج خفيف */
   bubbleMine: {
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.75)',
-    borderRadius: radius.full,
+    borderColor: colors.glassBorderStrong,
+    borderBottomEndRadius: 6,
   },
   /** صف الرسالة المستلمة: أفاتار صغير جنب الفقاعة (زي الصورة المرجعية) */
   receivedRow: {
@@ -2363,6 +2422,25 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     borderColor: colors.gold,
   },
   msgText: { color: colors.text, fontSize: fonts.sizes.md, lineHeight: 22 },
+  /** رسالة إيموجي بس: من غير فقاعة (زي واتساب) — إيموجي كبير والوقت صغير تحته */
+  emojiOnlyWrap: { marginBottom: 2 },
+  emojiOnlyMine: { alignItems: 'flex-end' },
+  emojiOnlyOther: { alignItems: 'flex-start' },
+  emojiOnlyMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  emojiOnlyTime: { color: colors.muted, fontSize: 10 },
+  emojiOnlyBadge: {
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    borderRadius: radius.full,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
   deleted: { color: colors.faint, fontStyle: 'italic', fontSize: fonts.sizes.sm },
   time: { color: colors.muted, fontSize: 10, marginTop: 3, textAlign: 'right' },
   mediaImg: { width: 210, height: 210, borderRadius: radius.md },

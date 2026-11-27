@@ -131,16 +131,6 @@ export const gradients = {
   glassSheen: ['rgba(255,255,255,0.14)', 'rgba(255,255,255,0.02)'] as const,
 };
 
-/** فقاعة المرسلة المجسّمة (زي الصورة المرجعية): لافندر فاتح ثابت في الوضعين —
- *  نص غامق عليها، مش أبيض */
-export const sentBubble = {
-  gradient: ['#ede9fe', '#c4b5fd', '#a78bfa'],
-  text: '#1e1b4b',
-  time: 'rgba(30,27,75,0.65)',
-  name: '#6d28d9',
-  play: '#7c3aed',
-} as const;
-
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 export const radius = { sm: 10, md: 16, lg: 22, xl: 30, full: 999 } as const;
 
