@@ -71,7 +71,7 @@ export const ar = {
   },
   tabs: {
     home: 'الرئيسية',
-    timeline: 'التايم لاين',
+    timeline: 'المجتمع',
     discover: 'اكتشف',
     chats: 'المحادثات',
     wallet: 'المحفظة',
@@ -463,7 +463,7 @@ export const ar = {
     err_error: 'حصل خطأ',
   },
   timeline: {
-    title: 'التايم لاين',
+    title: 'المجتمع',
     compose: 'اكتب بوست...',
     placeholder: 'قول اللي في بالك...',
     post: 'نشر',
@@ -702,7 +702,7 @@ export const en: typeof ar = {
   },
   tabs: {
     home: 'Home',
-    timeline: 'Timeline',
+    timeline: 'Community',
     discover: 'Discover',
     chats: 'Chats',
     wallet: 'Wallet',
@@ -1094,7 +1094,7 @@ export const en: typeof ar = {
     err_error: 'Something went wrong',
   },
   timeline: {
-    title: 'Timeline',
+    title: 'Community',
     compose: 'Write a post...',
     placeholder: 'What is on your mind...',
     post: 'Post',
