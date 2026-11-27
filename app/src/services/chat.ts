@@ -253,6 +253,36 @@ export async function softDeleteMessage(messageId: string): Promise<boolean> {
   return !error;
 }
 
+/** "الحذف لدي" — إخفاء رسالة عندي بس (الطرف التاني بيشوفها عادي).
+ *  سجل في hidden_messages؛ التكرار (نفس المستخدم + نفس الرسالة) نجاح
+ *  مش خطأ (قيد UNIQUE). */
+export async function hideMessageForMe(
+  messageId: string,
+  userId: string,
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('hidden_messages')
+    .insert({ user_id: userId, message_id: messageId });
+  if (error && (error as { code?: string }).code !== '23505') return false;
+  return true;
+}
+
+/** IDs الرسايل اللي المستخدم خفاها لنفسه — من ضمن قائمة IDs معينة
+ *  (بتتنده بعد تحميل رسايل المحادثة عشان يتستبعدوا من العرض). */
+export async function fetchHiddenMessageIds(
+  userId: string,
+  messageIds: string[],
+): Promise<Set<string>> {
+  if (!messageIds.length) return new Set();
+  const { data, error } = await supabase
+    .from('hidden_messages')
+    .select('message_id')
+    .eq('user_id', userId)
+    .in('message_id', messageIds);
+  if (error || !data) return new Set();
+  return new Set((data as { message_id: string }[]).map((r) => r.message_id));
+}
+
 /** تعديل رسالة نصية خاصة بي (خلال 15 دقيقة من الإرسال — يتحقق منه
  *  واجهة الشات). يضبط edited_at؛ لو العمود لسه مش موجود في القاعدة
  *  (قبل الـ migration) التحديث بيفشل وبيرجع false. */

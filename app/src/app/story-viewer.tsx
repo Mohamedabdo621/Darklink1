@@ -150,6 +150,32 @@ export default function StoryViewer() {
   // بيحصل لما الأنيميشن يخلص — فالإيقاف المؤقت (تعليق/ورقة/ضغطة مطولة)
   // بيوقف الشريط والمؤقت مع بعض، والإفلات بيكمل من نفس النقطة
   const paused = commentFocused || sheet !== 'none' || holding;
+  /** ضغطة سريعة (<250ms) على الثلث الأيمن/الأيسر = تنقّل، والضغطة
+   *  المطولة = إيقاف مؤقت طول ما الإصبع على الشاشة */
+  const HOLD_TAP_MS = 250;
+  const holdZoneRef = useRef<'start' | 'center' | 'end'>('center');
+  const holdPressAtRef = useRef(0);
+  const holdGrant = (zone: 'start' | 'center' | 'end') => {
+    holdZoneRef.current = zone;
+    holdPressAtRef.current = Date.now();
+    setHolding(true);
+  };
+  const holdRelease = () => {
+    const pressMs = Date.now() - holdPressAtRef.current;
+    setHolding(false);
+    if (pressMs < HOLD_TAP_MS) {
+      if (holdZoneRef.current === 'start') {
+        if (idx > 0) setIdx(idx - 1);
+      } else if (holdZoneRef.current === 'end') {
+        if (idx < stories.length - 1) setIdx(idx + 1);
+        else router.back();
+      }
+    }
+  };
+  const holdTerminate = () => {
+    // النظام قتل اللمسة من برّه — عاملها زي الإفلات
+    holdRelease();
+  };
   useEffect(() => {
     // قصة جديدة = شريط من الصفر
     barValueRef.current = 0;
@@ -284,26 +310,37 @@ export default function StoryViewer() {
       )}
 
       {/* مناطق اللمس للتنقل — ضغطة سريعة يمين/شمال بتنقّل، وضغطة مطولة
-          في أي حتة بتوقف الستوري والشريط لحد ما تسيب إيدك (زي واتساب) */}
-      <TouchableOpacity
+          في أي حتة بتوقف الستوري والشريط لحد ما تسيب إيدك (زي واتساب).
+          responder مباشر (مش TouchableOpacity) عشان المتصفح على موبايل
+          الويب بيسرق الضغطة المطولة بعد ~ثانية ويفصل الإيقاف: الزرار
+          بيرفض يسلّم اللمسة (onResponderTerminationRequest false) فالإيقاف
+          بيفضل شغال طول ما الإصبع على الشاشة — نفس إصلاح المايك. */}
+      <View
         style={styles.tapStart}
-        activeOpacity={1}
-        onPress={() => (idx > 0 ? setIdx(idx - 1) : null)}
-        onPressIn={() => setHolding(true)}
-        onPressOut={() => setHolding(false)}
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderTerminationRequest={() => false}
+        onResponderGrant={() => holdGrant('start')}
+        onResponderRelease={holdRelease}
+        onResponderTerminate={holdTerminate}
       />
-      <TouchableOpacity
+      <View
         style={styles.tapCenter}
-        activeOpacity={1}
-        onPressIn={() => setHolding(true)}
-        onPressOut={() => setHolding(false)}
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderTerminationRequest={() => false}
+        onResponderGrant={() => holdGrant('center')}
+        onResponderRelease={holdRelease}
+        onResponderTerminate={holdTerminate}
       />
-      <TouchableOpacity
+      <View
         style={styles.tapEnd}
-        activeOpacity={1}
-        onPress={() => (idx < stories.length - 1 ? setIdx(idx + 1) : router.back())}
-        onPressIn={() => setHolding(true)}
-        onPressOut={() => setHolding(false)}
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderTerminationRequest={() => false}
+        onResponderGrant={() => holdGrant('end')}
+        onResponderRelease={holdRelease}
+        onResponderTerminate={holdTerminate}
       />
 
       {/* شريط التفاعل: قلب + تعليق (مشاهد) أو إحصائيات (مالك) */}
@@ -490,9 +527,11 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     textAlign: 'center',
     lineHeight: 34,
   },
-  tapStart: { position: 'absolute', start: 0, top: 110, bottom: 0, width: '35%' },
-  tapCenter: { position: 'absolute', left: '35%', right: '35%', top: 110, bottom: 0 },
-  tapEnd: { position: 'absolute', end: 0, top: 110, bottom: 0, width: '35%' },
+  // userSelect: none عشان المتصفح ما يبدأش تحديد نص / قائمة ضغطة مطولة
+  // ويسرق اللمسة من الـ responder
+  tapStart: { position: 'absolute', start: 0, top: 110, bottom: 0, width: '35%', userSelect: 'none' },
+  tapCenter: { position: 'absolute', left: '35%', right: '35%', top: 110, bottom: 0, userSelect: 'none' },
+  tapEnd: { position: 'absolute', end: 0, top: 110, bottom: 0, width: '35%', userSelect: 'none' },
   /** شريط التفاعل السفلي — فوق مناطق اللمس (بيترسم بعدها) */
   bottomBarWrap: { position: 'absolute', start: 0, end: 0, bottom: 0 },
   bottomBar: {

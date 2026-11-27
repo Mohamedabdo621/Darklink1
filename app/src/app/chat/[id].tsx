@@ -38,9 +38,11 @@ import { EMOJI_QUICK, loadQuickEmoji, saveQuickEmoji } from '../../lib/quickEmoj
 import { loadDataSaver } from '../../lib/dataSaver';
 import {
   editMessage,
+  fetchHiddenMessageIds,
   fetchMessages,
   fetchReactions,
   fetchReplyPreview,
+  hideMessageForMe,
   markConversationRead,
   mediaSignedUrl,
   REACTION_EMOJIS,
@@ -75,6 +77,8 @@ const REC_CANCEL_DX = -28;
 const REC_LOCK_DY = -28;
 /** ضغطة أقصر من كده بتفتح واجهة التسجيل بالنقرة (مش إرسال ولا إلغاء — زي واتساب) */
 const REC_TAP_MS = 200;
+/** مصفوفة تفاعلات فارغة ثابتة — عشان الـ prop ما يتغيرش مع كل ريندر */
+const EMPTY_REACTIONS: { emoji: string; count: number; mine: boolean }[] = [];
 
 export default function ChatScreen() {
   const { colors } = useTheme();
@@ -99,6 +103,10 @@ export default function ChatScreen() {
     Record<string, { emoji: string; count: number; mine: boolean }[]>
   >({});
   const [actionMsg, setActionMsg] = useState<Message | null>(null);
+  /** رسالة بانتظار اختيار نوع الحذف (لدي / للجميع) */
+  const [deleteMsg, setDeleteMsg] = useState<Message | null>(null);
+  /** IDs الرسايل اللي خفيتها لنفسي ("الحذف لدي") — بتتستبعد من العرض */
+  const hiddenIdsRef = useRef<Set<string>>(new Set());
   const [typing, setTyping] = useState(false);
   const [otherOnline, setOtherOnline] = useState(false);
   // v1.6.0 — قائمة انتظار أوفلاين + مسودات + تحرير + قائمة الـ 3 نقط
@@ -114,6 +122,10 @@ export default function ChatScreen() {
   const [loadedIds, setLoadedIds] = useState<Record<string, boolean>>({});
   const textRef = useRef('');
   const draftLoadedRef = useRef(false);
+  /** مؤقت تأجيل حفظ المسودة — المسودة بتتحفظ بعد 500ms من التوقف عن
+   *  الكتابة مش مع كل حرف (حفظ AsyncStorage مع كل حرف هو اللي بيهنّج
+   *  المسح السريع) */
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const channelRef = useRef<any>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingSent = useRef(0);
@@ -142,6 +154,12 @@ export default function ChatScreen() {
   /** true من لحظة ما record() ينجح لحد ما التسجيل يتوقف/يتلغي —
    *  بيمنع إيقاف/إرسال ملف قديم من تسجيل سابق */
   const recStartedRef = useRef(false);
+  /** المسجل متجهز وجاهز — لو true، startRecording بيتخطى
+   *  prepareToRecordAsync (التجهيز اتعمل في الخلفية بعد التسجيل اللي فات) */
+  const recPreparedRef = useRef(false);
+  /** تجهيز جاري — بيتشارك بين ضغطة المايك والتجهيز الخلفي بعد الإرسال
+   *  عشان ما يبقاش فيه تجهيزين متوازيين */
+  const recPreparePromiseRef = useRef<Promise<void> | null>(null);
 
   const failSend = () => appAlert(t('common.error'), t('chat.blockedNotice'));
 
@@ -160,33 +178,60 @@ export default function ChatScreen() {
     };
   };
 
+  /** يجهّز المسجل لو مش متجهز — الطلبات المتزامنة بتستنى نفس الوعد
+   *  (ضغطة مايك + تجهيز خلفي)، والفشل بيرجع false ضمنيًا عبر الـ throw
+   *  وبيسمح بإعادة المحاولة في الضغطة اللي بعدها. */
+  const ensureRecPrepared = useCallback(async () => {
+    if (recPreparedRef.current) return;
+    if (!recPreparePromiseRef.current) {
+      recPreparePromiseRef.current = (async () => {
+        await recorder.prepareToRecordAsync();
+        recPreparedRef.current = true;
+      })().finally(() => {
+        recPreparePromiseRef.current = null;
+      });
+    }
+    await recPreparePromiseRef.current;
+  }, [recorder]);
+
   const startRecording = async () => {
     if (recorder.isRecording) return;
     // جلسة البدء دي — لو الإصبع اترفع قبل ما التجهيز يخلص، الإفلات
     // بيزوّد العداد فالسلسلة دي بتتوقف قبل ما تنادي record()
     const session = recSessionRef.current;
+    // إلغاء مبكر (إذن مرفوض / جلسة اتلغت / تجهيز فشل) — رجّع الواجهة
+    // للحالة العادية عشان الواجهة المتفائلة ما تفضلش معلقة على التسجيل
+    const abort = () => {
+      recTapPendingRef.current = false;
+      setMicPressed(false);
+      setPhase('idle');
+    };
     const status = await AudioModule.requestRecordingPermissionsAsync();
     if (!status.granted) {
-      recTapPendingRef.current = false;
+      abort();
       appAlert(t('common.error'), t('chat.micDenied'));
       return;
     }
     if (recSessionRef.current !== session) {
-      recTapPendingRef.current = false;
+      abort();
       return;
     }
     Keyboard.dismiss();
-    await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
-    if (recSessionRef.current !== session) {
-      recTapPendingRef.current = false;
+    // التجهيز غالبًا خلص في الخلفية بعد التسجيل اللي فات (متجهز) —
+    // فالضغطة دي بتبدأ فورًا من غير انتظار getUserMedia
+    try {
+      await ensureRecPrepared();
+    } catch {
+      abort();
       return;
     }
-    await recorder.prepareToRecordAsync();
     if (recSessionRef.current !== session) {
-      recTapPendingRef.current = false;
+      abort();
       return;
     }
     recorder.record();
+    // الـ prepared instance اتستهلك — لازم تجهيز جديد بعد الإيقاف
+    recPreparedRef.current = false;
     recStartedRef.current = true;
     setRecPaused(false);
     // ضغطة سريعة كانت مستنية التجهيز → افتح واجهة النقرة بدل شريط الضغط
@@ -256,11 +301,16 @@ export default function ChatScreen() {
       // المسجل واقف أصلًا
     }
     recStartedRef.current = false;
+    // الـ prepared instance اتستهلك — لازم تجهيز جديد بعد الإيقاف
+    recPreparedRef.current = false;
     const uri = recorder.uri;
     setPhase('idle');
     setRecDrag({ dx: 0, dy: 0 });
     recTapPendingRef.current = false;
     if (!uri) return;
+    // جهّز التسجيل اللي جاي في الخلفية دلوقتي (الإذن ممنوح خلاص)
+    // فالضغطة اللي بعدها تبدأ فورًا
+    void ensureRecPrepared().catch(() => {});
     const dur = Math.max(1, Math.round(recState.durationMillis / 1000));
     await sendRecording(uri, dur);
   };
@@ -269,6 +319,8 @@ export default function ChatScreen() {
     recSessionRef.current += 1;
     const wasStarted = recStartedRef.current;
     recStartedRef.current = false;
+    // الـ prepared instance اتستهلك — لازم تجهيز جديد بعد الإيقاف
+    recPreparedRef.current = false;
     recTapPendingRef.current = false;
     setMicPressed(false);
     setRecPaused(false);
@@ -339,6 +391,9 @@ export default function ChatScreen() {
     recTapPendingRef.current = false;
     // الزرار بيكبر من أول لحظة الضغط — قبل ما التجهيز يخلص
     setMicPressed(true);
+    // شريط التسجيل بيظهر فورًا مع الضغطة (قبل التجهيز ما يخلص) —
+    // التأخير كان سببه استنى الإذن + تجهيز المسجل قبل إظهار الواجهة
+    setPhase('recording');
     // ضغطة والمايك بيسجّل أصلًا (التسجيل بدأ والإصبع اترفع بسرعة قبل
     // ما التجهيز يخلص) — وقّف وابعت اللي اتسجّل
     if (phase === 'recording') {
@@ -443,9 +498,16 @@ export default function ChatScreen() {
       setMuted(((conv.muted_for ?? []) as string[]).includes(me.id));
     }
     const msgs = await fetchMessages(conversationId);
-    setMessages(msgs);
-    loadGiftInfo(msgs);
-    setReactions(await fetchReactions(msgs.map((m) => m.id), me.id));
+    // استبعد الرسايل اللي المستخدم خفاها لنفسه ("الحذف لدي")
+    const hidden = await fetchHiddenMessageIds(
+      me.id,
+      msgs.map((m) => m.id),
+    );
+    hiddenIdsRef.current = hidden;
+    const visible = msgs.filter((m) => !hidden.has(m.id));
+    setMessages(visible);
+    loadGiftInfo(visible);
+    setReactions(await fetchReactions(visible.map((m) => m.id), me.id));
     await markConversationRead(conversationId);
   }, [conversationId, me, loadGiftInfo]);
 
@@ -471,6 +533,11 @@ export default function ChatScreen() {
   useEffect(() => {
     const cid = conversationId;
     return () => {
+      // لو فيه حفظ مسودة مؤجل لسه ما اتنفذش، احفظها فورًا قبل الخروج
+      if (draftTimerRef.current) {
+        clearTimeout(draftTimerRef.current);
+        draftTimerRef.current = null;
+      }
       if (cid && textRef.current.trim()) {
         void saveDraft(cid, textRef.current);
       }
@@ -490,6 +557,12 @@ export default function ChatScreen() {
       if (isOnline) void flushOutbox();
     });
     return () => unsub();
+  }, []);
+
+  // ضبط الصوت مرة واحدة لما الشات يتفتح — مش مع كل ضغطة مايك
+  // (كان جزء من تأخير بدء التسجيل؛ الإذن لسه بيتطلب مع كل ضغطة)
+  useEffect(() => {
+    setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true }).catch(() => {});
   }, []);
 
   // هزة خفيفة عند دخول منطقة الإلغاء/القفل أثناء سحب التسجيل
@@ -569,6 +642,8 @@ export default function ChatScreen() {
           const row = (payload.new ?? payload.old) as Message;
           setMessages((prev) => {
             if (payload.eventType === 'INSERT') {
+              // رسالة خفيتها لنفسي ("الحذف لدي") ما ترجعش تظهر من الاشتراك
+              if (hiddenIdsRef.current.has(row.id)) return prev;
               if (prev.some((m) => m.id === row.id)) return prev;
               return [row, ...prev];
             }
@@ -619,34 +694,251 @@ export default function ChatScreen() {
     };
   }, [conversationId, me, loadGiftInfo, t]);
 
-  if (!me || !conversationId) return <View style={styles.root} />;
+  // ---------- دوال ثابتة (useCallback/useMemo) قبل الإرجاع المبكر —
+  // عشان الكتابة ما تعيدش رسم كل فقاعة: صفوف القائمة memo والـ props
+  // بتاعتها لازم تبقى ثابتة الهوية بين الريندرات ----------
+  /** حفظ المسودة فورًا — بيلغي أي حفظ مؤجل (إيموجي سريع مثلًا) */
+  const flushDraft = useCallback(() => {
+    if (draftTimerRef.current) {
+      clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = null;
+    }
+    if (conversationId && textRef.current.trim()) {
+      void saveDraft(conversationId, textRef.current);
+    }
+  }, [conversationId]);
 
   /** نص مختصر لأي رسالة — بيُستخدم في الاقتباس وشريط الرد */
-  const snippetFor = (m: ReplyPreview | Message): string => {
-    if (m.is_deleted) return t('chats.deleted');
-    switch (m.type) {
-      case 'voice':
-        return t('chats.voiceNote');
-      case 'image':
-        return t('chats.photo');
-      case 'video':
-        return t('chats.video');
-      case 'gift':
-        return t('chats.gift');
-      default:
-        return m.body ?? '';
-    }
-  };
+  const snippetFor = useCallback(
+    (m: ReplyPreview | Message): string => {
+      if (m.is_deleted) return t('chats.deleted');
+      switch (m.type) {
+        case 'voice':
+          return t('chats.voiceNote');
+        case 'image':
+          return t('chats.photo');
+        case 'video':
+          return t('chats.video');
+        case 'gift':
+          return t('chats.gift');
+        default:
+          return m.body ?? '';
+      }
+    },
+    [t],
+  );
 
-  const nameFor = (senderId: string): string =>
-    senderId === me.id ? t('chat.youName') : (other?.shown_name ?? '');
+  const nameFor = useCallback(
+    (senderId: string): string =>
+      senderId === me?.id ? t('chat.youName') : (other?.shown_name ?? ''),
+    [me, other, t],
+  );
 
-  /** كتابة: تحديث النص + حفظ مسودة + بث «بيكتب» مثبّتًا كل ٢.٥ ثانية */
+  const onReact = useCallback(
+    async (m: Message, emoji: string) => {
+      if (!me) return;
+      const myCurrent = reactions[m.id]?.find((r) => r.mine)?.emoji ?? null;
+      // تحديث متفائل
+      setReactions((prev) => {
+        const cur = (prev[m.id] ?? []).map((r) => ({ ...r }));
+        const mineIdx = cur.findIndex((r) => r.mine);
+        if (mineIdx >= 0) {
+          cur[mineIdx].count -= 1;
+          if (cur[mineIdx].count <= 0) cur.splice(mineIdx, 1);
+        }
+        if (myCurrent !== emoji) {
+          const ex = cur.find((r) => r.emoji === emoji);
+          if (ex) {
+            ex.count += 1;
+            ex.mine = true;
+          } else cur.push({ emoji, count: 1, mine: true });
+        }
+        return { ...prev, [m.id]: cur };
+      });
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      const ok = await toggleReaction(m.id, me.id, emoji, myCurrent);
+      if (!ok) {
+        const fresh = await fetchReactions([m.id], me.id);
+        setReactions((prev) => ({ ...prev, ...fresh }));
+      }
+    },
+    [me, reactions],
+  );
+
+  const startReply = useCallback((m: Message) => {
+    if (m.is_deleted) return;
+    setReplyTo(m);
+    Haptics.selectionAsync().catch(() => {});
+    setTimeout(() => inputRef.current?.focus(), 60);
+  }, []);
+
+  const onLongPress = useCallback((m: Message) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setActionMsg(m);
+  }, []);
+
+  /** فاصل التاريخ: "اليوم" أو التاريخ — يظهر فوق أول رسالة في اليوم */
+  const dayKey = useCallback((iso: string) => {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  }, []);
+  const dayLabel = useCallback(
+    (iso: string) => {
+      if (dayKey(iso) === dayKey(new Date().toISOString())) return t('chat.today');
+      return new Date(iso).toLocaleDateString(
+        i18n.language === 'ar' ? 'ar-EG' : 'en-GB',
+        { day: 'numeric', month: 'long', year: 'numeric' },
+      );
+    },
+    [dayKey, i18n.language, t],
+  );
+
+  const handleGiftPress = useCallback(
+    (g: GiftInfo) =>
+      setAnimGift({ nameKey: g.name_key, title: t('giftAnimation.replay') }),
+    [t],
+  );
+  const handleMediaPress = useCallback(
+    (url: string, kind: 'image' | 'video') =>
+      router.push({ pathname: '/media-viewer', params: { url, type: kind } }),
+    [],
+  );
+  const handleLoadMedia = useCallback(
+    (id: string) => setLoadedIds((prev) => ({ ...prev, [id]: true })),
+    [],
+  );
+
+  /** القائمة: المعلّقة (الأحدث) أولًا ثم الرسائل — المعلقة باينة بعلامة ساعة */
+  const listData = useMemo<(Message | OutboxItem)[]>(
+    () => [...pending, ...messages],
+    [pending, messages],
+  );
+
+  /** صف القائمة — ثابت الهوية إلا لما تتغير بياناته (عشان memo الفقاعات
+   *  يشتغل: الكتابة بتغيّر النص بس فالفقاعات ما بتترسمش من تاني) */
+  const renderItem = useCallback(
+    ({ item, index }: { item: Message | OutboxItem; index: number }) => {
+      // رسالة معلّقة (أوفلاين) — فقاعة شفافة بعلامة ساعة
+      if ('localId' in item) {
+        return <PendingBubble item={item} />;
+      }
+      const mine = item.sender_id === me?.id;
+      // فاصل التاريخ فوق أول رسالة في اليوم (الأقدم في المجموعة)
+      const next = listData[index + 1];
+      const showDay =
+        !next || 'localId' in next || dayKey(next.created_at) !== dayKey(item.created_at);
+      // مسافة أصغر بين رسائل نفس الشخص المتتالية
+      const nextMine =
+        !!next && !('localId' in next) && next.sender_id === item.sender_id;
+      const gap = nextMine ? 2 : 10;
+      const bubble = (
+        <MessageBubble
+          m={item}
+          mine={mine}
+          gift={item.gift_send_id ? giftMap[item.gift_send_id] : undefined}
+          replyName={item.reply_preview ? nameFor(item.reply_preview.sender_id) : undefined}
+          replySnippet={item.reply_preview ? snippetFor(item.reply_preview) : undefined}
+          reactions={reactions[item.id] ?? EMPTY_REACTIONS}
+          onReactPress={onReact}
+          onGiftPress={handleGiftPress}
+          onMediaPress={handleMediaPress}
+          onLongPress={onLongPress}
+          dataSaver={dataSaver}
+          forceLoad={!!loadedIds[item.id]}
+          onLoadMedia={handleLoadMedia}
+        />
+      );
+      const pill = showDay ? (
+        <View style={styles.datePill}>
+          <Text style={styles.datePillText}>{dayLabel(item.created_at)}</Text>
+        </View>
+      ) : null;
+      if (item.is_deleted) {
+        return (
+          <>
+            {pill}
+            <View
+              style={{
+                alignSelf: mine ? 'flex-end' : 'flex-start',
+                maxWidth: '75%',
+                marginBottom: gap,
+              }}>
+              {bubble}
+            </View>
+          </>
+        );
+      }
+      return (
+        <>
+          {pill}
+          <Swipeable
+            ref={(r) => {
+              if (r) swipeRefs.current.set(item.id, r);
+              else swipeRefs.current.delete(item.id);
+            }}
+            friction={2}
+            leftThreshold={36}
+            rightThreshold={36}
+            overshootLeft={false}
+            overshootRight={false}
+            containerStyle={{
+              alignSelf: mine ? 'flex-end' : 'flex-start',
+              maxWidth: '75%',
+              marginBottom: gap,
+            }}
+            renderLeftActions={() => (
+              <View style={styles.replyAction}>
+                <Text style={{ fontSize: 19 }}>↩</Text>
+              </View>
+            )}
+            renderRightActions={() => (
+              <View style={styles.replyAction}>
+                <Text style={{ fontSize: 19 }}>↪</Text>
+              </View>
+            )}
+            onSwipeableOpen={() => {
+              startReply(item);
+              swipeRefs.current.get(item.id)?.close();
+            }}>
+            {bubble}
+          </Swipeable>
+        </>
+      );
+    },
+    [
+      listData,
+      reactions,
+      giftMap,
+      dataSaver,
+      loadedIds,
+      me,
+      nameFor,
+      snippetFor,
+      onReact,
+      onLongPress,
+      handleGiftPress,
+      handleMediaPress,
+      handleLoadMedia,
+      startReply,
+      dayKey,
+      dayLabel,
+      styles,
+    ],
+  );
+
+  if (!me || !conversationId) return <View style={styles.root} />;
+
+  /** كتابة: تحديث النص + حفظ مسودة مؤجل + بث «بيكتب» مثبّتًا كل ٢.٥ ثانية */
   const onType = (v: string) => {
     setText(v);
     textRef.current = v;
-    // مسودة: احفظ النص لو المستخدم طلع من الشات من غير ما يبعت
-    if (conversationId) void saveDraft(conversationId, v);
+    // مسودة: بتتحفظ بعد 500ms من التوقف عن الكتابة مش مع كل حرف
+    // (حفظ AsyncStorage مع كل حرف هو اللي بيهنّج المسح السريع)
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(() => {
+      draftTimerRef.current = null;
+      if (conversationId) void saveDraft(conversationId, textRef.current);
+    }, 500);
     if (v.trim() && Date.now() - lastTypingSent.current > 2500) {
       lastTypingSent.current = Date.now();
       channelRef.current?.send({
@@ -662,48 +954,22 @@ export default function ChatScreen() {
     setEditText(v);
   };
 
-  const onReact = async (m: Message, emoji: string) => {
-    const myCurrent = reactions[m.id]?.find((r) => r.mine)?.emoji ?? null;
-    // تحديث متفائل
-    setReactions((prev) => {
-      const cur = (prev[m.id] ?? []).map((r) => ({ ...r }));
-      const mineIdx = cur.findIndex((r) => r.mine);
-      if (mineIdx >= 0) {
-        cur[mineIdx].count -= 1;
-        if (cur[mineIdx].count <= 0) cur.splice(mineIdx, 1);
-      }
-      if (myCurrent !== emoji) {
-        const ex = cur.find((r) => r.emoji === emoji);
-        if (ex) {
-          ex.count += 1;
-          ex.mine = true;
-        } else cur.push({ emoji, count: 1, mine: true });
-      }
-      return { ...prev, [m.id]: cur };
-    });
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    const ok = await toggleReaction(m.id, me.id, emoji, myCurrent);
-    if (!ok) {
-      const fresh = await fetchReactions([m.id], me.id);
-      setReactions((prev) => ({ ...prev, ...fresh }));
-    }
-  };
-
-  const startReply = (m: Message) => {
-    if (m.is_deleted) return;
-    setReplyTo(m);
-    Haptics.selectionAsync().catch(() => {});
-    setTimeout(() => inputRef.current?.focus(), 60);
-  };
-
   /** إرسال نص — clearComposer بيمسح صندوق الكتابة والمسودة (إرسال عادي)،
    *  ولو false بيسيب اللي مكتوب زي ما هو (إيموجي سريع) */
   const sendTextBody = async (body: string, clearComposer: boolean) => {
     if (!body.trim() || sending) return;
     const replyId = replyTo?.id ?? null;
     if (clearComposer) {
+      // النص بيتبعت — مفيش مسودة تحفظها: ألغي أي حفظ مؤجل
+      if (draftTimerRef.current) {
+        clearTimeout(draftTimerRef.current);
+        draftTimerRef.current = null;
+      }
       setText('');
       textRef.current = '';
+    } else {
+      // إيموجي سريع — اللي مكتوب بيفضل: احفظ المسودة فورًا
+      flushDraft();
     }
     setSending(true);
     // أوفلاين: احفظها في القائمة وهتتبعت تلقائي لما النت يرجع
@@ -718,6 +984,8 @@ export default function ChatScreen() {
       setPending((prev) => [item, ...prev]);
       setReplyTo(null);
       setSending(false);
+      // الرسالة في القائمة وهتتبعت — المسودة ملهاش لازمة
+      await clearDraft(conversationId);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       return;
     }
@@ -734,6 +1002,8 @@ export default function ChatScreen() {
       });
       setPending((prev) => [item, ...prev]);
       setReplyTo(null);
+      // الرسالة في القائمة وهتتبعت — المسودة ملهاش لازمة
+      await clearDraft(conversationId);
       return;
     }
     if (clearComposer) await clearDraft(conversationId);
@@ -870,19 +1140,25 @@ export default function ChatScreen() {
     await sendPickedMedia(asset, asset.type === 'video');
   };
 
-  const onLongPress = (m: Message) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    setActionMsg(m);
-  };
-
   const sheetDelete = async (m: Message) => {
     setActionMsg(null);
+    setDeleteMsg(null);
     if (await softDeleteMessage(m.id)) {
       setMessages((prev) =>
         prev.map((x) =>
           x.id === m.id ? { ...x, is_deleted: true, body: null, media_path: null } : x,
         ),
       );
+    }
+  };
+
+  /** "الحذف لدي" — الرسالة بتختفي عندي بس (الطرف التاني بيشوفها عادي).
+   *  سجل في hidden_messages + شيلها من العرض متفائلًا. */
+  const deleteForMe = async (m: Message) => {
+    setDeleteMsg(null);
+    if (await hideMessageForMe(m.id, me.id)) {
+      hiddenIdsRef.current.add(m.id);
+      setMessages((prev) => prev.filter((x) => x.id !== m.id));
     }
   };
 
@@ -944,22 +1220,6 @@ export default function ChatScreen() {
     );
   };
 
-  /** فاصل التاريخ: "اليوم" أو التاريخ — يظهر فوق أول رسالة في اليوم */
-  const dayKey = (iso: string) => {
-    const d = new Date(iso);
-    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-  };
-  const dayLabel = (iso: string) => {
-    if (dayKey(iso) === dayKey(new Date().toISOString())) return t('chat.today');
-    return new Date(iso).toLocaleDateString(
-      i18n.language === 'ar' ? 'ar-EG' : 'en-GB',
-      { day: 'numeric', month: 'long', year: 'numeric' },
-    );
-  };
-
-  /** القائمة: المعلّقة (الأحدث) أولًا ثم الرسائل — المعلقة باينة بعلامة ساعة */
-  const listData: (Message | OutboxItem)[] = [...pending, ...messages];
-
   return (
     <View style={styles.root}>
       {/* الترويسة — مسافة الأمان الحقيقية بتاعة الجهاز (مش رقم ثابت)،
@@ -1013,103 +1273,7 @@ export default function ChatScreen() {
         inverted
         keyExtractor={(m) => ('localId' in m ? m.localId : m.id)}
         contentContainerStyle={{ padding: spacing.md }}
-        renderItem={({ item, index }) => {
-          // رسالة معلّقة (أوفلاين) — فقاعة شفافة بعلامة ساعة
-          if ('localId' in item) {
-            return <PendingBubble item={item} />;
-          }
-          const mine = item.sender_id === me.id;
-          // فاصل التاريخ فوق أول رسالة في اليوم (الأقدم في المجموعة)
-          const next = listData[index + 1];
-          const showDay =
-            !next || 'localId' in next || dayKey(next.created_at) !== dayKey(item.created_at);
-          // مسافة أصغر بين رسائل نفس الشخص المتتالية
-          const nextMine =
-            !!next && !('localId' in next) && next.sender_id === item.sender_id;
-          const gap = nextMine ? 2 : 10;
-          const bubble = (
-            <MessageBubble
-              m={item}
-              mine={mine}
-              gift={item.gift_send_id ? giftMap[item.gift_send_id] : undefined}
-              replyName={item.reply_preview ? nameFor(item.reply_preview.sender_id) : undefined}
-              replySnippet={item.reply_preview ? snippetFor(item.reply_preview) : undefined}
-              reactions={reactions[item.id] ?? []}
-              onReactPress={(emoji) => onReact(item, emoji)}
-              onGiftPress={(g) =>
-                setAnimGift({ nameKey: g.name_key, title: t('giftAnimation.replay') })
-              }
-              onMediaPress={(url, kind) =>
-                router.push({
-                  pathname: '/media-viewer',
-                  params: { url, type: kind },
-                })
-              }
-              onLongPress={() => onLongPress(item)}
-              dataSaver={dataSaver}
-              forceLoad={!!loadedIds[item.id]}
-              onLoadMedia={() =>
-                setLoadedIds((prev) => ({ ...prev, [item.id]: true }))
-              }
-            />
-          );
-          const pill = showDay ? (
-            <View style={styles.datePill}>
-              <Text style={styles.datePillText}>{dayLabel(item.created_at)}</Text>
-            </View>
-          ) : null;
-          if (item.is_deleted) {
-            return (
-              <>
-                {pill}
-                <View
-                  style={{
-                    alignSelf: mine ? 'flex-end' : 'flex-start',
-                    maxWidth: '75%',
-                    marginBottom: gap,
-                  }}>
-                  {bubble}
-                </View>
-              </>
-            );
-          }
-          return (
-            <>
-              {pill}
-              <Swipeable
-                ref={(r) => {
-                  if (r) swipeRefs.current.set(item.id, r);
-                  else swipeRefs.current.delete(item.id);
-                }}
-                friction={2}
-                leftThreshold={36}
-                rightThreshold={36}
-                overshootLeft={false}
-                overshootRight={false}
-                containerStyle={{
-                  alignSelf: mine ? 'flex-end' : 'flex-start',
-                  maxWidth: '75%',
-                  marginBottom: gap,
-                }}
-                renderLeftActions={() => (
-                  <View style={styles.replyAction}>
-                    <Text style={{ fontSize: 19 }}>↩</Text>
-                  </View>
-                )}
-                renderRightActions={() => (
-                  <View style={styles.replyAction}>
-                    <Text style={{ fontSize: 19 }}>↪</Text>
-                  </View>
-                )}
-                onSwipeableOpen={() => {
-                  startReply(item);
-                  swipeRefs.current.get(item.id)?.close();
-                }}>
-                {bubble}
-              </Swipeable>
-            </>
-          );
-        }}
+        renderItem={renderItem}
       />
 
       {/* شريط الرد (اقتباس) */}
@@ -1367,7 +1531,10 @@ export default function ChatScreen() {
                 <Text style={styles.sheetRowText}>{t('chat.reply')}</Text>
               </TouchableOpacity>
             ) : null}
-            {actionMsg && actionMsg.sender_id === me.id && !actionMsg.is_deleted ? (
+            {actionMsg &&
+            actionMsg.sender_id === me.id &&
+            actionMsg.type === 'text' &&
+            !actionMsg.is_deleted ? (
               <TouchableOpacity
                 style={styles.sheetRow}
                 onPress={() => {
@@ -1378,10 +1545,13 @@ export default function ChatScreen() {
                 <Text style={styles.sheetRowText}>{t('chat.editMessage')}</Text>
               </TouchableOpacity>
             ) : null}
-            {actionMsg && actionMsg.sender_id === me.id && !actionMsg.is_deleted ? (
+            {actionMsg && !actionMsg.is_deleted ? (
               <TouchableOpacity
                 style={styles.sheetRow}
-                onPress={() => sheetDelete(actionMsg)}>
+                onPress={() => {
+                  setActionMsg(null);
+                  setDeleteMsg(actionMsg);
+                }}>
                 <GlassIconChip name="trash-outline" danger />
                 <Text style={[styles.sheetRowText, { color: colors.danger }]}>
                   {t('chat.deleteMessage')}
@@ -1399,6 +1569,42 @@ export default function ChatScreen() {
             <TouchableOpacity
               style={styles.sheetRow}
               onPress={() => setActionMsg(null)}>
+              <Text style={[styles.sheetRowText, { color: colors.muted }]}>
+                {t('common.cancel')}
+              </Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* اختيار نوع الحذف: "لدي" (بتختفي عندي بس) أو "لدي الجميع"
+          (بتمسح من الطرفين) — رسايل غيري ملهاش إلا "لدي" */}
+      <Modal
+        transparent
+        visible={!!deleteMsg}
+        animationType="fade"
+        onRequestClose={() => setDeleteMsg(null)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setDeleteMsg(null)}>
+          <Pressable style={styles.sheet} onPress={() => {}}>
+            <TouchableOpacity
+              style={styles.sheetRow}
+              onPress={() => deleteMsg && void deleteForMe(deleteMsg)}>
+              <GlassIconChip name="eye-off-outline" />
+              <Text style={styles.sheetRowText}>{t('chat.deleteForMe')}</Text>
+            </TouchableOpacity>
+            {deleteMsg && deleteMsg.sender_id === me.id ? (
+              <TouchableOpacity
+                style={styles.sheetRow}
+                onPress={() => deleteMsg && void sheetDelete(deleteMsg)}>
+                <GlassIconChip name="trash-outline" danger />
+                <Text style={[styles.sheetRowText, { color: colors.danger }]}>
+                  {t('chat.deleteForEveryone')}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              style={styles.sheetRow}
+              onPress={() => setDeleteMsg(null)}>
               <Text style={[styles.sheetRowText, { color: colors.muted }]}>
                 {t('common.cancel')}
               </Text>
@@ -1570,7 +1776,7 @@ function RecWaveform({ metering, paused }: { metering?: number; paused: boolean 
   );
 }
 
-function MessageBubble({
+const MessageBubble = React.memo(function MessageBubble({
   m,
   mine,
   gift,
@@ -1591,15 +1797,15 @@ function MessageBubble({
   replyName?: string;
   replySnippet?: string;
   reactions: { emoji: string; count: number; mine: boolean }[];
-  onReactPress: (emoji: string) => void;
+  onReactPress: (m: Message, emoji: string) => void;
   onGiftPress?: (gift: GiftInfo) => void;
   onMediaPress: (url: string, kind: 'image' | 'video') => void;
-  onLongPress: () => void;
+  onLongPress: (m: Message) => void;
   /** توفير البيانات: الصورة متنزلش تلقائيًا لحد ما المستخدم يدوس عليها */
   dataSaver: boolean;
   /** المستخدم داس "تحميل" على الصورة دي */
   forceLoad: boolean;
-  onLoadMedia: () => void;
+  onLoadMedia: (id: string) => void;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -1627,7 +1833,7 @@ function MessageBubble({
   const time = formatTimeAr(m.created_at);
 
   return (
-    <TouchableOpacity onLongPress={onLongPress} activeOpacity={0.85}>
+    <TouchableOpacity onLongPress={() => onLongPress(m)} activeOpacity={0.85}>
       <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
         {!m.is_deleted && m.reply_to_id ? (
           <View style={styles.quote}>
@@ -1645,7 +1851,7 @@ function MessageBubble({
           <Text style={[styles.msgText, mine && { color: colors.white }]}>{m.body}</Text>
         ) : m.type === 'image' ? (
           dataSaver && !forceLoad ? (
-            <TouchableOpacity onPress={onLoadMedia} style={styles.tapToLoad}>
+            <TouchableOpacity onPress={() => onLoadMedia(m.id)} style={styles.tapToLoad}>
               <Ionicons name="image-outline" size={30} color={colors.muted} />
               <Text style={styles.tapToLoadText}>↓ {t('chat.tapToLoad')}</Text>
             </TouchableOpacity>
@@ -1684,33 +1890,36 @@ function MessageBubble({
             </View>
           </TouchableOpacity>
         ) : null}
-        {reactions.length ? (
-          <View style={styles.reactionRow}>
-            {reactions.map((r) => (
-              <TouchableOpacity
-                key={r.emoji}
-                style={[styles.reactionChip, r.mine && styles.reactionChipMine]}
-                onPress={() => onReactPress(r.emoji)}>
-                <Text style={{ fontSize: 12 }}>
-                  {r.emoji}
-                  {r.count > 1 ? ` ${r.count}` : ''}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : null}
         <Text style={[styles.time, mine && { color: 'rgba(255,255,255,0.7)' }]}>
           {time}
           {m.edited_at ? ` • ${t('chat.edited')}` : ''}
           {mine && !m.is_deleted ? (m.read_at ? ' ✓✓' : ' ✓') : ''}
         </Text>
+        {/* التفاعلات: شارة عائمة صغيرة فوق زاوية الفقاعة السفلية —
+            مش صف تحت المحتوى (فالفقاعة ما بتكبرش لما يتضاف تفاعل).
+            جوّه حدود الفقاعة عشان Swipeable بيقصّ اللي برّه (overflow hidden).
+            كل الإيموجي في نفس الشارة، والعدد بيظهر لما يتكرر إيموجي واحد.
+            الضغطة بتبدّل التفاعل الأول المعروض (زي الضغطة على الشريحة قبل كده). */}
+        {reactions.length ? (
+          <TouchableOpacity
+            style={styles.reactionBadge}
+            activeOpacity={0.8}
+            onPress={() => onReactPress(m, reactions[0].emoji)}>
+            <Text style={styles.reactionBadgeText}>
+              {reactions.map((r) => r.emoji).join('')}
+              {reactions.length === 1 && reactions[0].count > 1
+                ? ` ${reactions[0].count}`
+                : ''}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 /** فقاعة رسالة معلّقة (أوفلاين): شفافة شوية، بعلامة ساعة، بتتبعت لما النت يرجع */
-function PendingBubble({ item }: { item: OutboxItem }) {
+const PendingBubble = React.memo(function PendingBubble({ item }: { item: OutboxItem }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
@@ -1754,7 +1963,7 @@ function PendingBubble({ item }: { item: OutboxItem }) {
       </View>
     </View>
   );
-}
+});
 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
@@ -1779,16 +1988,20 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   statusTyping: { color: colors.accent, fontSize: fonts.sizes.xs, marginTop: 1 },
   statusOnline: { color: '#4ade80', fontSize: fonts.sizes.xs, marginTop: 1 },
   statusSeen: { color: colors.faint, fontSize: fonts.sizes.xs, marginTop: 1 },
-  reactionRow: { flexDirection: 'row', gap: 4, marginTop: 5, flexWrap: 'wrap' },
-  reactionChip: {
-    backgroundColor: 'rgba(0,0,0,0.25)',
+  /** شارة التفاعل العائمة: دايرة غامقة صغيرة فوق زاوية الفقاعة السفلية
+   *  (جوّه حدود الفقاعة عشان Swipeable بيقصّ اللي برّه) */
+  reactionBadge: {
+    position: 'absolute',
+    bottom: 2,
+    left: 2,
+    backgroundColor: 'rgba(0,0,0,0.55)',
     borderWidth: 1,
     borderColor: colors.stroke,
     borderRadius: radius.full,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
   },
-  reactionChipMine: { borderColor: colors.accent, backgroundColor: 'rgba(217,70,239,0.18)' },
+  reactionBadgeText: { fontSize: 13, color: colors.white },
   sheetBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(3,0,8,0.6)',
@@ -1874,9 +2087,10 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  /** المرسلة: هوية بنفسجية + حد زجاجي أبيض خفيف وذيل مدوّر ناعم */
+  /** المرسلة: بنفسجي شفاف 35% (65% عتامة) — النص والموجة والوقت
+   *  والصحات والشارة بيفضلوا 100% معتمين (الشفافية في الخلفية بس) */
   bubbleMine: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySoft,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.28)',
     borderBottomEndRadius: 6,

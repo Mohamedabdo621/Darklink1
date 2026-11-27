@@ -20,6 +20,8 @@ export interface ThemePalette {
   stroke: string;
   primary: string;
   primaryBright: string;
+  /** نفس البنفسجي بس شفاف ٣٥٪ (عتمة ٦٥٪) — خلفية فقاعاتي المرسلة */
+  primarySoft: string;
   accent: string;
   magenta: string;
   pink: string;
@@ -56,6 +58,7 @@ export const darkColors: ThemePalette = {
   stroke: 'rgba(168, 85, 247, 0.30)',
   primary: '#a855f7',
   primaryBright: '#c084fc',
+  primarySoft: 'rgba(168, 85, 247, 0.65)',
   accent: '#e879f9',
   magenta: '#d946ef',
   pink: '#f472b6',
@@ -91,6 +94,7 @@ export const lightColors: ThemePalette = {
   stroke: 'rgba(124, 58, 237, 0.28)',
   primary: '#a855f7',
   primaryBright: '#9333ea',
+  primarySoft: 'rgba(168, 85, 247, 0.65)',
   accent: '#c026d3',
   magenta: '#d946ef',
   pink: '#db2777',
