@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
-import { fonts, gradients } from '../../theme';
+import { fonts, gradients, radius, spacing } from '../../theme';
 
 import { useTheme } from '../../contexts/ThemeContext';
 import type { ThemeColors } from '../../theme';
@@ -85,11 +85,15 @@ export default function TabsLayout() {
 }
 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+  /** شريط زجاجي مستدير عايم — زي الصورة المرجعية */
   bar: {
     flexDirection: 'row',
     backgroundColor: colors.tabBar,
-    borderTopWidth: 1,
-    borderTopColor: colors.stroke,
+    borderWidth: 1,
+    borderColor: colors.glassBorderStrong,
+    borderRadius: radius.full,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
     height: 62,
     paddingBottom: 8,
     paddingTop: 6,

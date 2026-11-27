@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Image,
   StyleSheet,
   Switch,
   Text,
@@ -64,10 +65,20 @@ export function Screen({
   children: React.ReactNode;
   style?: ViewStyle;
 }) {
-  const { colors } = useTheme();
+  const { colors, resolved } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <SafeAreaView style={[styles.screen, style]}>
+      {/* الخلفية الموحّدة 2K لكل التطبيق (فاتحة/غامقة حسب الثيم) */}
+      <Image
+        source={
+          resolved === 'light'
+            ? require('../assets/chat-bg-light.jpg')
+            : require('../assets/chat-bg-dark.jpg')
+        }
+        style={[StyleSheet.absoluteFill, { width: '100%', height: '100%' }]}
+        resizeMode="cover"
+      />
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         {STARS.map((s, i) => (
           <View

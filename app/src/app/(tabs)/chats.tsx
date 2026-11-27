@@ -8,13 +8,14 @@ import {
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 import Swipeable, { SwipeDirection, type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Animated, { useAnimatedReaction, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
 import { Avatar } from '../../components/Avatar';
-import { Screen } from '../../components/ui';
+import { Logo, Screen } from '../../components/ui';
 import { TabSwipe } from '../../components/TabSwipe';
 import { useAuth } from '../../contexts/AuthContext';
 import { appAlert } from '../../lib/dialog';
@@ -340,6 +341,14 @@ export default function Chats() {
     }
   };
 
+  const onMenu = () => {
+    appAlert('', undefined, [
+      { text: t('home.settings'), onPress: () => router.push('/settings') },
+      { text: t('tabs.profile'), onPress: () => router.push('/(tabs)/profile') },
+      { text: t('common.cancel'), style: 'cancel' },
+    ]);
+  };
+
   const onRowLongPress = (item: ChatRow) => {
     appAlert(item.other?.shown_name ?? '', undefined, [
       {
@@ -357,7 +366,27 @@ export default function Chats() {
   return (
     <TabSwipe current="chats">
       <Screen>
-      <Text style={styles.title}>{t('chats.title')}</Text>
+      {/* هيدر زجاجي زي الصورة المرجعية: بيت + DARKLINK + بحث + ⋮ */}
+      <View style={styles.headerPill}>
+        <BlurView
+          intensity={resolved === 'light' ? 20 : 32}
+          tint={resolved === 'light' ? 'light' : 'dark'}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+        <TouchableOpacity onPress={() => router.push('/(tabs)/home')} hitSlop={8}>
+          <Ionicons name="home-outline" size={22} color={colors.text} />
+        </TouchableOpacity>
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <Logo size={18} />
+        </View>
+        <TouchableOpacity onPress={() => router.push('/(tabs)/discover')} hitSlop={8}>
+          <Ionicons name="search-outline" size={22} color={colors.text} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onMenu} hitSlop={8}>
+          <Ionicons name="ellipsis-vertical" size={22} color={colors.text} />
+        </TouchableOpacity>
+      </View>
       <FlatList
         data={rows}
         keyExtractor={(r) => r.conversationId}
@@ -407,41 +436,38 @@ export default function Chats() {
           resolved === 'light' ? lightShadowGlowSoft : shadowGlowSoft,
         ]}
         onLongPress={() => onRowLongPress(item)}
-            onPress={() =>
-              router.push({ pathname: '/chat/[id]', params: { id: item.conversationId } })
-            }>
-            <Avatar
-              uri={item.avatar}
-              name={item.other?.shown_name}
-              size={52}
-            />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.name} numberOfLines={1}>
-                {item.other?.shown_name ?? '—'}
-                {item.other?.is_vip ? ' 👑' : ''}
-                {item.pinned ? ' 📌' : ''}
-                {item.muted ? ' 🔇' : ''}
-              </Text>
-              <Text
-                style={[styles.preview, !item.preview && styles.previewEmpty]}
-                numberOfLines={1}>
-                {item.mine && item.preview ? t('chats.you') : ''}
-                {item.preview || t('chats.noMessages')}
-              </Text>
-            </View>
-            <View style={{ alignItems: 'flex-end', gap: 5 }}>
-              <Text style={styles.time}>{item.time}</Text>
-              {item.unread > 0 ? (
-                <LinearGradient
-                  colors={[...gradients.primary]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.badge}>
-                  <Text style={styles.badgeText}>{item.unread}</Text>
-                </LinearGradient>
-              ) : null}
-            </View>
-          </TouchableOpacity>
+        onPress={() =>
+          router.push({ pathname: '/chat/[id]', params: { id: item.conversationId } })
+        }>
+        <View style={{ alignItems: 'flex-end', gap: 5 }}>
+          <Text style={styles.time}>{item.time}</Text>
+          {item.unread > 0 ? (
+            <LinearGradient
+              colors={[...gradients.primary]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.badge}>
+              <Text style={styles.badgeText}>{item.unread}</Text>
+            </LinearGradient>
+          ) : null}
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.name} numberOfLines={1}>
+            {item.other?.shown_name ?? '—'}
+            {item.other?.is_vip ? ' 👑' : ''}
+            {item.pinned ? ' 📌' : ''}
+            {item.muted ? ' 🔇' : ''}
+          </Text>
+          <Text
+            style={[styles.preview, !item.preview && styles.previewEmpty]}
+            numberOfLines={1}>
+            {item.mine && item.preview ? t('chats.you') : ''}
+            {item.preview || t('chats.noMessages')}
+          </Text>
+        </View>
+        <Avatar uri={item.avatar} name={item.other?.shown_name} size={56} />
+        <Ionicons name="chevron-back" size={20} color={colors.muted} />
+      </TouchableOpacity>
           </Swipeable>
         )}
       />
@@ -451,6 +477,20 @@ export default function Chats() {
 }
 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+  /** هيدر زجاجي مستدير زي الصورة المرجعية */
+  headerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginVertical: spacing.md,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.glassBorderStrong,
+    backgroundColor: colors.tabBar,
+    overflow: 'hidden',
+  },
   title: {
     color: colors.text,
     fontSize: fonts.sizes.xl,
@@ -468,12 +508,12 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: spacing.md,
-    marginVertical: 4,
-    borderRadius: radius.md,
+    marginVertical: 6,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
+    borderColor: colors.glassBorderStrong,
     // معتم تمامًا — لو شفاف زراير السحب الحمراء اللي وراه تبان من خلاله
     backgroundColor: colors.surface,
   },
@@ -505,7 +545,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   name: { color: colors.text, fontSize: fonts.sizes.md, fontWeight: fonts.weights.bold },
   preview: { color: colors.muted, fontSize: fonts.sizes.sm, marginTop: 2 },
   previewEmpty: { color: colors.faint },
-  time: { color: colors.faint, fontSize: fonts.sizes.xs },
+  time: { color: colors.muted, fontSize: fonts.sizes.xs },
   badge: {
     borderRadius: radius.full,
     minWidth: 20,

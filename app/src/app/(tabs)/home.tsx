@@ -22,7 +22,7 @@ import { fetchTimeline } from '../../services/timeline';
 import { avatarSignedUrl } from '../../services/profile';
 import { fetchPublicProfile } from '../../services/social';
 import { fetchUnreadNotifications } from '../../services/wallet';
-import { fonts, radius, shadowGlow, spacing, textGlow } from '../../theme';
+import { fonts, lightShadowGlowSoft, radius, shadowGlow, shadowGlowSoft, spacing, textGlow } from '../../theme';
 
 import { useTheme } from '../../contexts/ThemeContext';
 import type { ThemeColors } from '../../theme';
@@ -138,7 +138,7 @@ export default function Home() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={{ width: 40 }} />
-          <Logo size={22} />
+          <Logo size={24} />
           <TouchableOpacity
             onPress={() => router.push('/notifications')}
             style={styles.bell}>
@@ -172,7 +172,7 @@ export default function Home() {
                 : router.push('/story-new')
             }>
             <View>
-              <Avatar uri={avatar} name={name} size={62} />
+              <Avatar uri={avatar} name={name} size={72} />
               <TouchableOpacity
                 style={styles.storyPlus}
                 onPress={() => router.push('/story-new')}>
@@ -195,7 +195,7 @@ export default function Home() {
                     params: { userId: g.userId },
                   })
                 }>
-                <Avatar uri={g.avatar} name={g.user?.shown_name} size={62} />
+                <Avatar uri={g.avatar} name={g.user?.shown_name} size={72} />
                 <Text style={styles.storyLabel} numberOfLines={1}>
                   {g.user?.shown_name ?? '—'}
                 </Text>
@@ -205,7 +205,7 @@ export default function Home() {
 
         <GlowCard style={styles.identityCard}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-            <Avatar uri={avatar} name={name} size={62} />
+            <Avatar uri={avatar} name={name} size={68} />
             <View style={{ flex: 1 }}>
               <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
                 {t('home.welcome')}
@@ -237,7 +237,7 @@ export default function Home() {
           </View>
           <Text style={styles.balance}>
             {wallet?.balance ?? 0}{' '}
-            <Text style={{ fontSize: fonts.sizes.md, color: colors.primaryBright }}>
+            <Text style={{ fontSize: fonts.sizes.md, color: colors.accent }}>
               {t('common.gems')}
             </Text>
           </Text>
@@ -307,14 +307,9 @@ export default function Home() {
         </View>
 
         {/* التايم لاين */}
-        <View style={styles.timelineHeader}>
-          <Text style={styles.sectionTitle}>{t('timeline.title')}</Text>
-          <TouchableOpacity
-            onPress={() => router.push('/compose-post')}
-            style={styles.composeBtn}>
-            <Ionicons name="add" size={26} color={colors.white} />
-          </TouchableOpacity>
-        </View>
+        <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>
+          {t('timeline.title')}
+        </Text>
         {posts.length === 0 && !timelineBusy ? (
           <Text style={{ color: colors.muted, marginBottom: spacing.lg }}>
             {t('timeline.noPosts')}
@@ -346,6 +341,13 @@ export default function Home() {
           <View style={{ height: spacing.xxl }} />
         )}
       </ScrollView>
+      {/* زر منشور جديد عايم فوق الشريط السفلي — زي الصورة المرجعية */}
+      <TouchableOpacity
+        onPress={() => router.push('/compose-post')}
+        style={styles.fab}
+        hitSlop={8}>
+        <Ionicons name="add" size={28} color={colors.white} />
+      </TouchableOpacity>
     </Screen>
     </TabSwipe>
   );
@@ -360,11 +362,16 @@ function Shortcut({
   label: string;
   onPress: () => void;
 }) {
-  const { colors } = useTheme();
+  const { colors, resolved } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
-    <TouchableOpacity onPress={onPress} style={styles.shortcut}>
-      <Ionicons name={icon as never} size={26} color={colors.primaryBright} />
+    <TouchableOpacity
+      onPress={onPress}
+      style={[
+        styles.shortcut,
+        resolved === 'light' ? lightShadowGlowSoft : shadowGlowSoft,
+      ]}>
+      <Ionicons name={icon as never} size={28} color={colors.primaryBright} />
       <Text style={styles.shortcutLabel}>{label}</Text>
     </TouchableOpacity>
   );
@@ -447,17 +454,14 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: spacing.sm,
   },
   shortcutLabel: { color: colors.text, fontSize: fonts.sizes.sm, fontWeight: fonts.weights.medium },
-  timelineHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.lg,
-    marginBottom: spacing.md,
-  },
-  composeBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  /** زر منشور جديد عايم — فوق الشريط السفلي على الطرف */
+  fab: {
+    position: 'absolute',
+    bottom: spacing.lg,
+    start: spacing.lg,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
