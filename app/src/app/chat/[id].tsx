@@ -73,8 +73,8 @@ interface GiftInfo {
  *  مش لازم توصل لمكان معين) */
 const REC_CANCEL_DX = -28;
 const REC_LOCK_DY = -28;
-/** ضغطة أقصر من كده تتجاهل خالص (مش تسجيل — زي واتساب) */
-const REC_TAP_MS = 150;
+/** ضغطة أقصر من كده بتفتح واجهة التسجيل بالنقرة (مش إرسال ولا إلغاء — زي واتساب) */
+const REC_TAP_MS = 200;
 
 export default function ChatScreen() {
   const { colors } = useTheme();
@@ -120,9 +120,12 @@ export default function ChatScreen() {
 
   // ---- التسجيل الصوتي (ستايل واتساب: ضغط مطول، إفلات للإرسال،
   // سحب حر لليسار للإلغاء، سحب حر لأعلى للقفل — من غير هدف معين)
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorder = useAudioRecorder({
+    ...RecordingPresets.HIGH_QUALITY,
+    isMeteringEnabled: true,
+  });
   const recState = useAudioRecorderState(recorder, 250);
-  const [phase, setPhase] = useState<'idle' | 'recording' | 'locked'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'recording' | 'tap'>('idle');
   const [recDrag, setRecDrag] = useState({ dx: 0, dy: 0 });
   /** جلسة التسجيل الحالية — بتمنع استدعاء record() المتأخر لو الإصبع
    *  اترفع بسرعة قبل ما التجهيز يخلص (فكانت بتسيب تسجيل شبح شغال) */
@@ -130,6 +133,15 @@ export default function ChatScreen() {
   const recPressAtRef = useRef(0);
   /** موضع الإصبع لحظة الضغط — منه بيتحسب السحب (pageX/pageY) */
   const recStartPosRef = useRef({ x: 0, y: 0 });
+  /** واجهة النقرة: إيقاف مؤقت / استئناف */
+  const [recPaused, setRecPaused] = useState(false);
+  /** الإصبع ضاغط على المايك دلوقتي — الزرار بيكبر طول الضغطة */
+  const [micPressed, setMicPressed] = useState(false);
+  /** ضغطة سريعة (<200ms) والتسجيل لسه بيجهز — لما record() يبدأ يفتح واجهة النقرة */
+  const recTapPendingRef = useRef(false);
+  /** true من لحظة ما record() ينجح لحد ما التسجيل يتوقف/يتلغي —
+   *  بيمنع إيقاف/إرسال ملف قديم من تسجيل سابق */
+  const recStartedRef = useRef(false);
 
   const failSend = () => appAlert(t('common.error'), t('chat.blockedNotice'));
 
@@ -155,17 +167,31 @@ export default function ChatScreen() {
     const session = recSessionRef.current;
     const status = await AudioModule.requestRecordingPermissionsAsync();
     if (!status.granted) {
+      recTapPendingRef.current = false;
       appAlert(t('common.error'), t('chat.micDenied'));
       return;
     }
-    if (recSessionRef.current !== session) return;
+    if (recSessionRef.current !== session) {
+      recTapPendingRef.current = false;
+      return;
+    }
     Keyboard.dismiss();
     await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
-    if (recSessionRef.current !== session) return;
+    if (recSessionRef.current !== session) {
+      recTapPendingRef.current = false;
+      return;
+    }
     await recorder.prepareToRecordAsync();
-    if (recSessionRef.current !== session) return;
+    if (recSessionRef.current !== session) {
+      recTapPendingRef.current = false;
+      return;
+    }
     recorder.record();
-    setPhase('recording');
+    recStartedRef.current = true;
+    setRecPaused(false);
+    // ضغطة سريعة كانت مستنية التجهيز → افتح واجهة النقرة بدل شريط الضغط
+    setPhase(recTapPendingRef.current ? 'tap' : 'recording');
+    recTapPendingRef.current = false;
   };
 
   /** إرسال فويس — أوفلاين بيتخزن في القائمة ويترفع لما النت يرجع */
@@ -211,11 +237,17 @@ export default function ChatScreen() {
     setSending(false);
   };
 
-  /** إيقاف التسجيل وإرسال الفويس فورًا (من غير معاينة) */
+  /** إيقاف التسجيل وإرسال الفويس فورًا (من غير معاينة) — بيوقف حتى لو
+   *  التسجيل متوقف مؤقتًا (isRecording بيبقى false وقت الإيقاف المؤقت) */
   const stopAndSendRecording = async () => {
-    if (!recorder.isRecording) {
+    recSessionRef.current += 1;
+    setMicPressed(false);
+    setRecPaused(false);
+    // لو التسجيل لسه مابدأش أصلًا (إرسال قبل ما التجهيز يخلص) مفيش حاجة تتبعت
+    if (!recStartedRef.current) {
       setPhase('idle');
       setRecDrag({ dx: 0, dy: 0 });
+      recTapPendingRef.current = false;
       return;
     }
     try {
@@ -223,9 +255,11 @@ export default function ChatScreen() {
     } catch {
       // المسجل واقف أصلًا
     }
+    recStartedRef.current = false;
     const uri = recorder.uri;
     setPhase('idle');
     setRecDrag({ dx: 0, dy: 0 });
+    recTapPendingRef.current = false;
     if (!uri) return;
     const dur = Math.max(1, Math.round(recState.durationMillis / 1000));
     await sendRecording(uri, dur);
@@ -233,7 +267,13 @@ export default function ChatScreen() {
 
   const cancelRecording = async () => {
     recSessionRef.current += 1;
-    if (recorder.isRecording) {
+    const wasStarted = recStartedRef.current;
+    recStartedRef.current = false;
+    recTapPendingRef.current = false;
+    setMicPressed(false);
+    setRecPaused(false);
+    // وقّف حتى لو متوقف مؤقتًا — المسجل المتوقف مؤقتًا لسه ماسك الستريم
+    if (wasStarted) {
       try {
         await recorder.stop();
       } catch {
@@ -245,11 +285,31 @@ export default function ChatScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   };
 
+  /** القفل بالسحب لفوق بيفتح واجهة التسجيل بالنقرة (واجهة واحدة موحدة) */
   const lockRecording = () => {
     if (!recorder.isRecording) return;
     setRecDrag({ dx: 0, dy: 0 });
-    setPhase('locked');
+    setMicPressed(false);
+    setPhase('tap');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  };
+
+  /** إيقاف مؤقت / استئناف من واجهة النقرة — pause مدعوم على الويب
+   *  (MediaRecorder.pause) وعلى الموبايل؛ وrecord() من غير بارامترات
+   *  بيستأنف نفس التسجيل. لو فشل لأي سبب، التسجيل بيكمل من غير ما يضيع. */
+  const toggleRecPause = () => {
+    if (!recorder.isRecording && !recPaused) return;
+    try {
+      if (recPaused) {
+        recorder.record();
+        setRecPaused(false);
+      } else {
+        recorder.pause();
+        setRecPaused(true);
+      }
+    } catch {
+      setRecPaused(false);
+    }
   };
 
   /** مدة التسجيل الحالية بصيغة m:ss */
@@ -265,15 +325,20 @@ export default function ChatScreen() {
 
   /** إيماءة التسجيل (نفس نظام PanResponder بس بخواص responder مباشرة على
    *  الزر — فالـ handlers بتوعها event handlers عادية: مسموح فيها قراءة
-   *  الـ refs وDate.now. ضغطة مطولة بتبدأ، الشريط بيمشي مع الإصبع لحظيًا،
+   *  الـ refs وDate.now. ضغطة مطولة بتبدأ، والزرار بيكبر ×1.4 من أول
+   *  لحظة الضغط ويفضل كبير طول الضغطة، والشريط بيمشي مع الإصبع لحظيًا،
    *  والإفلات بعد أي سحب واضح لليسار بيلغي (من غير هدف معين) وبعد أي
-   *  سحب واضح لفوق بيقفل، والإفلات العادي بيبعت. ضغطة أقصر من 150ms
-   *  بتتجاهل خالص (مش فويس). شغالة على الموبايل والويب. */
+   *  سحب واضح لفوق بيقفل، والإفلات العادي بيبعت. ضغطة سريعة (أقل من
+   *  200ms) بتفتح واجهة التسجيل بالنقرة والتسجيل بيكمل فيها. شغالة على
+   *  الموبايل والويب. */
   const recGrant = (e: GestureResponderEvent) => {
     // جلسة جديدة: أي سلسلة تجهيز قديمة لسه شغالة بتتوقف
     recSessionRef.current += 1;
     recPressAtRef.current = Date.now();
     recStartPosRef.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY };
+    recTapPendingRef.current = false;
+    // الزرار بيكبر من أول لحظة الضغط — قبل ما التجهيز يخلص
+    setMicPressed(true);
     // ضغطة والمايك بيسجّل أصلًا (التسجيل بدأ والإصبع اترفع بسرعة قبل
     // ما التجهيز يخلص) — وقّف وابعت اللي اتسجّل
     if (phase === 'recording') {
@@ -290,16 +355,22 @@ export default function ChatScreen() {
     });
   };
   const recRelease = (e: GestureResponderEvent) => {
-    // الإفلات بيلغي جلسة البدء — أي record() متأخر مش هيتنفذ
-    recSessionRef.current += 1;
-    // ضغطة سريعة (أقل من 150ms): مش تسجيل أصلًا — تجاهل من غير ما تبعت
-    if (Date.now() - recPressAtRef.current < REC_TAP_MS) {
-      void cancelRecording();
-      return;
-    }
-    // سحب حر: أي سحب واضح لليسار + إفلات = إلغاء، من غير مكان معين
+    setMicPressed(false);
+    const pressMs = Date.now() - recPressAtRef.current;
     const dx = Math.min(0, e.nativeEvent.pageX - recStartPosRef.current.x);
     const dy = Math.min(0, e.nativeEvent.pageY - recStartPosRef.current.y);
+    // ضغطة سريعة (أقل من 200ms): مش إرسال ولا إلغاء — التسجيل بيكمل في
+    // واجهة النقرة. من غير ما تلغي جلسة البدء عشان لو التسجيل لسه بيجهز
+    // يكمل ويفتح الواجهة لما يبدأ.
+    if (pressMs < REC_TAP_MS) {
+      recTapPendingRef.current = true;
+      setRecDrag({ dx: 0, dy: 0 });
+      if (recorder.isRecording) setPhase('tap');
+      return;
+    }
+    // الإفلات بيلغي جلسة البدء — أي record() متأخر مش هيتنفذ
+    recSessionRef.current += 1;
+    // سحب حر: أي سحب واضح لليسار + إفلات = إلغاء، من غير مكان معين
     if (dx <= REC_CANCEL_DX) {
       void cancelRecording();
       return;
@@ -313,9 +384,17 @@ export default function ChatScreen() {
   };
   const recTerminate = () => {
     // النظام قتل اللمسة من برّه (سحب الشاشة/مكالمة/تنبيه) — عاملها زي
-    // الإفلات: لو كان بيسحب للإلغاء يلغي، ولو فيه تسجيل حقيقي يتبعت
-    // بدل ما يضيع، غير كده يلغي.
+    // الإفلات: ضغطة سريعة بتفتح واجهة النقرة، ولو كان بيسحب للإلغاء
+    // يلغي، ولو فيه تسجيل حقيقي يتبعت بدل ما يضيع، غير كده يلغي.
     recSessionRef.current += 1;
+    setMicPressed(false);
+    const pressMs = Date.now() - recPressAtRef.current;
+    if (pressMs < REC_TAP_MS) {
+      recTapPendingRef.current = true;
+      setRecDrag({ dx: 0, dy: 0 });
+      if (recorder.isRecording) setPhase('tap');
+      return;
+    }
     if (recDrag.dx <= REC_CANCEL_DX) {
       void cancelRecording();
       return;
@@ -395,8 +474,9 @@ export default function ChatScreen() {
       if (cid && textRef.current.trim()) {
         void saveDraft(cid, textRef.current);
       }
-      // لو خرج من الشات والتسجيل شغال (وضع القفل مثلًا)، وقّفه
-      if (recorder.isRecording) {
+      // لو خرج من الشات والتسجيل شغال (وضع النقرة/القفل مثلًا)، وقّفه
+      // (حتى لو متوقف مؤقتًا — isRecording بيبقى false وقتها)
+      if (recStartedRef.current) {
         void recorder.stop().catch(() => {});
       }
     };
@@ -1052,20 +1132,34 @@ export default function ChatScreen() {
         <View style={styles.blockedBar}>
           <Text style={{ color: colors.danger }}>{t('chat.blockedNotice')}</Text>
         </View>
-      ) : phase === 'locked' ? (
-        <View style={styles.composer}>
-          <Ionicons name="lock-closed" size={18} color={colors.muted} />
-          <Text style={{ color: colors.text, flex: 1 }}>
-            {recSeconds()} — {t('chat.lockedHint')}
-          </Text>
-          <TouchableOpacity onPress={() => void cancelRecording()} hitSlop={8}>
-            <Ionicons name="trash-outline" size={24} color={colors.danger} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => void stopAndSendRecording()}
-            style={styles.sendBtn}>
-            <Ionicons name="send" size={18} color={colors.white} style={sendFlip} />
-          </TouchableOpacity>
+      ) : phase === 'tap' ? (
+        <View style={styles.tapRecorder}>
+          <View style={styles.tapWaveRow}>
+            {recPaused ? <View style={styles.recDotPaused} /> : <PulseDot />}
+            <Text style={styles.recTimer}>{recSeconds()}</Text>
+            <RecWaveform metering={recState.metering} paused={recPaused} />
+          </View>
+          <Text style={styles.tapHint}>{t('chat.tapSendOrCancel')}</Text>
+          <View style={styles.tapControls}>
+            <TouchableOpacity onPress={() => void cancelRecording()} hitSlop={8}>
+              <Ionicons name="trash-outline" size={26} color={colors.danger} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={toggleRecPause} style={styles.tapPausePill}>
+              <Ionicons
+                name={recPaused ? 'play' : 'pause'}
+                size={16}
+                color={colors.text}
+              />
+              <Text style={styles.tapPauseText}>
+                {recPaused ? t('chat.recResume') : t('chat.recPause')}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => void stopAndSendRecording()}
+              style={styles.tapSendBtn}>
+              <Ionicons name="send" size={22} color={colors.white} style={sendFlip} />
+            </TouchableOpacity>
+          </View>
         </View>
       ) : (
         <>
@@ -1118,19 +1212,24 @@ export default function ChatScreen() {
                 <Ionicons name="trash-outline" size={26} color={colors.danger} />
               </View>
             ) : null}
-            {/* أيقونة القفل بتتملي تدريجيًا كل ما السحب لفوق يقرّب من القفل */}
-            {phase === 'recording' && recDrag.dy < -10 ? (
+            {/* أيقونة القفل فوق زرار المايك طول الضغطة (باهتة) وبتتملي
+                تدريجيًا كل ما السحب لفوق يقرّب من القفل */}
+            {phase === 'recording' ? (
               <View
                 pointerEvents="none"
                 style={[
                   styles.recLockIcon,
                   {
-                    opacity: Math.min(1, -recDrag.dy / -REC_LOCK_DY),
+                    opacity: recDrag.dy < -10 ? Math.min(1, -recDrag.dy / -REC_LOCK_DY) : 0.55,
                     transform: [
-                      { scale: 1 + Math.min(1, -recDrag.dy / 60) * 0.25 },
+                      {
+                        scale:
+                          1 + (recDrag.dy < -10 ? Math.min(1, -recDrag.dy / 60) * 0.25 : 0),
+                      },
                     ],
                   },
                 ]}>
+                <Ionicons name="chevron-up" size={16} color={colors.muted} />
                 <Ionicons
                   name={-recDrag.dy > 40 ? 'lock-closed' : 'lock-open-outline'}
                   size={26}
@@ -1176,6 +1275,8 @@ export default function ChatScreen() {
                     onChangeText={editing ? onTypeEdit : onType}
                     placeholder={editing ? t('chat.editHint') : t('chat.typeMessage')}
                     placeholderTextColor={colors.faint}
+                    cursorColor={colors.primaryBright}
+                    selectionColor={colors.primaryBright}
                     style={styles.input}
                     multiline
                   />
@@ -1203,12 +1304,23 @@ export default function ChatScreen() {
                 onResponderRelease={recRelease}
                 onResponderTerminate={recTerminate}
                 style={{ padding: 4, margin: -4 }}>
+                {/* الزرار بيكبر ×1.4 من أول لحظة الضغط ويفضل كبير طول
+                    الضغطة، وبيبقى زجاجي بنفسجي وهو بيسجّل */}
                 <View
                   style={[
-                    styles.sendBtn,
-                    phase === 'recording' && { transform: [{ scale: 1.1 }] },
+                    styles.micBtn,
+                    (phase === 'recording' || micPressed) && styles.micBtnHeld,
+                    micPressed && { transform: [{ scale: 1.4 }] },
                   ]}>
-                  <Ionicons name="mic" size={22} color={colors.white} />
+                  <Ionicons
+                    name="mic"
+                    size={26}
+                    color={
+                      phase === 'recording' || micPressed
+                        ? colors.primaryBright
+                        : colors.white
+                    }
+                  />
                 </View>
               </View>
             )}
@@ -1404,6 +1516,57 @@ function PulseDot() {
         opacity,
       }}
     />
+  );
+}
+
+/** موجة صوتية حية لواجهة التسجيل بالنقرة — من الـ metering بتاع
+ *  expo-audio (dBFS) لما يكون متاح، وإلا نبضة متحركة خفيفة (شكل بس).
+ *  بتتجمد لما التسجيل يتوقف مؤقتًا. */
+const REC_WAVE_BARS = 36;
+function RecWaveform({ metering, paused }: { metering?: number; paused: boolean }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const [levels, setLevels] = useState<number[]>(() => Array(REC_WAVE_BARS).fill(0.15));
+  const meteringRef = useRef(metering);
+  useEffect(() => {
+    meteringRef.current = metering;
+  }, [metering]);
+  const tickRef = useRef(0);
+  useEffect(() => {
+    if (paused) return;
+    const id = setInterval(() => {
+      tickRef.current += 1;
+      const tick = tickRef.current;
+      const m = meteringRef.current;
+      setLevels((prev) => {
+        const next = [...prev.slice(1)];
+        if (m !== undefined && m > -160) {
+          // dBFS (-160 صمت .. 0 أعلى صوت) → 0..1
+          const base = Math.min(1, Math.max(0.08, (m + 55) / 55));
+          next.push(base * (0.85 + 0.3 * Math.abs(Math.sin(tick * 1.3))));
+        } else {
+          next.push(0.3 + 0.18 * Math.sin(tick / 3) + 0.1 * Math.sin(tick / 1.7));
+        }
+        return next;
+      });
+    }, 140);
+    return () => clearInterval(id);
+  }, [paused]);
+  return (
+    <View style={styles.waveBars}>
+      {levels.map((lv, i) => (
+        <View
+          key={i}
+          style={{
+            width: 3,
+            height: Math.max(5, Math.round(lv * 30)),
+            borderRadius: 2,
+            backgroundColor: i === levels.length - 1 ? colors.primaryBright : colors.accent,
+            opacity: 0.45 + lv * 0.55,
+          }}
+        />
+      ))}
+    </View>
   );
 }
 
@@ -1765,6 +1928,9 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     maxHeight: 110,
     fontSize: fonts.sizes.md,
     textAlign: 'left',
+    // على الويب: من غير الإطار الأبيض المستطيل اللي المتصفح بيرسمه حوالين
+    // حقل الكتابة لما ياخد تركيز — يفضل بس خط المؤشر الوامض زي واتساب
+    outlineWidth: 0,
   },
   /** حقل الكتابة الدائري: زجاجي شفاف بلمسة بنفسجي — نفس لغة التطبيق */
   inputWrap: {
@@ -1844,6 +2010,21 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  /** زرار المايك: دايرة كبيرة منفصلة عن شريط الكتابة زي واتساب */
+  micBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  /** المايك وهو بيسجّل: زجاجي بنفسجي (بيكبر ×1.4 من الـ transform) */
+  micBtnHeld: {
+    backgroundColor: colors.glass,
+    borderWidth: 2,
+    borderColor: colors.primaryBright,
+  },
   /** مؤشر التسجيل جوه حقل الكتابة (نقطة بتنبض + مؤقت + تلميح السحب) */
   recIndicator: {
     flex: 1,
@@ -1867,12 +2048,81 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     marginTop: -13,
     zIndex: 1,
   },
-  /** أيقونة القفل اللي بتظهر فوق زرار المايك كل ما السحب لفوق يقرّب من القفل */
+  /** أيقونة القفل اللي بتظهر فوق زرار المايك طول الضغطة (باهتة) وبتتملي
+   *  تدريجيًا كل ما السحب لفوق يقرّب من القفل */
   recLockIcon: {
     position: 'absolute',
-    right: spacing.md,
-    bottom: 62,
+    left: 25,
+    bottom: 80,
     zIndex: 1,
+    alignItems: 'center',
+  },
+  /** واجهة التسجيل بالنقرة (موحدة: نقرة واحدة أو قفل بالسحب لفوق) */
+  tapRecorder: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.stroke,
+    backgroundColor: colors.surface,
+    gap: spacing.sm,
+  },
+  tapWaveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  waveBars: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    height: 32,
+  },
+  recDotPaused: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.danger,
+  },
+  tapHint: {
+    color: colors.muted,
+    fontSize: fonts.sizes.xs,
+    textAlign: 'center',
+  },
+  tapControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  tapPausePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  tapPauseText: {
+    color: colors.text,
+    fontSize: fonts.sizes.sm,
+    fontWeight: fonts.weights.bold,
+  },
+  tapSendBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   blockedBar: {
     padding: spacing.md,
