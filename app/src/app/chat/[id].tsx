@@ -2832,9 +2832,9 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingVertical: spacing.sm,
-    backgroundColor: colors.surface,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.stroke,
+    // من غير أي خلفية أو حدود — الإيموجي بتطفو لوحدها على خلفية الشاشة
+    // (طلب Alex 2026-11-27: "ميكون في باك جرواند لي الاموجي الي بختار منهم")
+    backgroundColor: 'transparent',
   },
   /** مكان الصورة في وضع توفير البيانات — دوس لتحميلها */
   tapToLoad: {
