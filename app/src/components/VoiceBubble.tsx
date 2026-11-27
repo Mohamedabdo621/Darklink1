@@ -3,7 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { mediaSignedUrl } from '../services/chat';
-import { fonts, radius, spacing } from '../theme';
+import { fonts, radius, sentBubble, spacing } from '../theme';
 
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme';
@@ -83,20 +83,20 @@ export default function VoiceBubble({
               backgroundColor:
                 i / bars.length <= progress
                   ? mine
-                    ? colors.white
+                    ? sentBubble.text
                     : colors.accent
                   : mine
-                    ? 'rgba(255,255,255,0.35)'
+                    ? 'rgba(30,27,75,0.25)'
                     : 'rgba(168,85,247,0.3)',
             }}
           />
         ))}
       </View>
-      <Text style={[styles.time, mine && { color: colors.white }]}>
+      <Text style={[styles.time, mine && { color: sentBubble.text }]}>
         {fmt(status.playing || status.currentTime > 0 ? status.currentTime : duration)}
       </Text>
-      <TouchableOpacity onPress={cycleSpeed} style={styles.speedBtn}>
-        <Text style={[styles.speedText, mine && { color: colors.white }]}>
+      <TouchableOpacity onPress={cycleSpeed} style={[styles.speedBtn, mine && styles.speedBtnMine]}>
+        <Text style={[styles.speedText, mine && { color: sentBubble.text }]}>
           {SPEEDS[speedIdx]}x
         </Text>
       </TouchableOpacity>
@@ -120,7 +120,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  playBtnMine: { backgroundColor: 'rgba(255,255,255,0.25)' },
+  playBtnMine: { backgroundColor: sentBubble.play },
   bars: {
     flex: 1,
     flexDirection: 'row',
@@ -136,5 +136,6 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 2,
   },
+  speedBtnMine: { borderColor: 'rgba(30,27,75,0.3)' },
   speedText: { color: colors.primaryBright, fontSize: fonts.sizes.xs, fontWeight: '700' },
 });
