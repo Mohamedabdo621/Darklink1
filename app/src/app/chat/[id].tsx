@@ -1699,6 +1699,9 @@ export default function ChatScreen() {
               }}
               onStartShouldSetResponder={() => true}
               onMoveShouldSetResponder={() => true}
+              // السحب على الشريط نفسه ميتقطعش — القايمة فوقه ممكن
+              // تسرق اللمس لما الصباع يطلع لفوق (نفس حماية زرار المايك)
+              onResponderTerminationRequest={() => false}
               onResponderGrant={onSlideStart}
               onResponderMove={onSlideMove}
               onResponderRelease={onSlideRelease}
@@ -1799,6 +1802,10 @@ export default function ChatScreen() {
                   <View
                     onStartShouldSetResponder={() => true}
                     onMoveShouldSetResponder={() => true}
+                    // لازم نرفض تسليم اللمس — من غير ده الشريط أو قايمة
+                    // الرسايل بيسرقوا الضغطة أول ما الصباع يزحلق لفوق
+                    // والشريط بيتقفل في نص السحب (نفس حماية زرار المايك)
+                    onResponderTerminationRequest={() => false}
                     onResponderGrant={onEmojiGrant}
                     onResponderMove={onEmojiMove}
                     onResponderRelease={onEmojiRelease}
