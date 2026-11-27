@@ -14,7 +14,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as Haptics from 'expo-haptics';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -183,9 +183,47 @@ export default function ChatScreen() {
     ...RecordingPresets.HIGH_QUALITY,
     isMeteringEnabled: true,
   });
-  const recState = useAudioRecorderState(recorder, 250);
+  const recState = useAudioRecorderState(recorder, 500);
   const [phase, setPhase] = useState<'idle' | 'recording' | 'tap'>('idle');
-  const [recDrag, setRecDrag] = useState({ dx: 0, dy: 0 });
+  /** موضع الإصبع أثناء سحب التسجيل — SharedValue مش state: كل حركة
+   *  إصبع كانت بتعيد رسم الشاشة كلها (سبب التهنيج أثناء السحب).
+   *  الـ state بيتحدث بس لما نعبر حد الإلغاء/القفل. */
+  const recDragSV = useSharedValue({ dx: 0, dy: 0 });
+  const [recZone, setRecZone] = useState<'none' | 'cancel' | 'lock'>('none');
+  const recZoneRef = useRef<'none' | 'cancel' | 'lock'>('none');
+  const recZoneOf = (dx: number, dy: number): 'none' | 'cancel' | 'lock' =>
+    dx <= REC_CANCEL_DX ? 'cancel' : dy <= REC_LOCK_DY ? 'lock' : 'none';
+  const updateRecZone = (dx: number, dy: number) => {
+    const z = recZoneOf(dx, dy);
+    if (z !== recZoneRef.current) {
+      recZoneRef.current = z;
+      setRecZone(z);
+      if (z !== 'none') Haptics.selectionAsync().catch(() => {});
+    }
+  };
+  // أيقونتا الإلغاء/القفل بيتحدثوا من الـ SharedValue مباشرة من غير
+  // إعادة رسم — السحب يمشي على 60 إطار من غير تهنيج
+  const trashAnimStyle = useAnimatedStyle(() => {
+    const dx = recDragSV.value.dx;
+    return {
+      opacity: dx < -10 ? Math.min(1, -dx / -REC_CANCEL_DX) : 0,
+      transform: [{ scale: 1 + Math.min(1, -dx / 60) * 0.3 }],
+    };
+  });
+  const lockAnimStyle = useAnimatedStyle(() => {
+    const dy = recDragSV.value.dy;
+    const active = dy < -10;
+    return {
+      opacity: active ? Math.min(1, -dy / -REC_LOCK_DY) : 0.55,
+      transform: [{ scale: 1 + (active ? Math.min(1, -dy / 60) * 0.25 : 0) }],
+    };
+  });
+  /** تصفير السحب (بعد الإرسال/الإلغاء/القفل/الإفلات) */
+  const resetRecDrag = () => {
+    recDragSV.value = { dx: 0, dy: 0 };
+    recZoneRef.current = 'none';
+    setRecZone('none');
+  };
   /** جلسة التسجيل الحالية — بتمنع استدعاء record() المتأخر لو الإصبع
    *  اترفع بسرعة قبل ما التجهيز يخلص (فكانت بتسيب تسجيل شبح شغال) */
   const recSessionRef = useRef(0);
@@ -347,7 +385,7 @@ export default function ChatScreen() {
     // لو التسجيل لسه مابدأش أصلًا (إرسال قبل ما التجهيز يخلص) مفيش حاجة تتبعت
     if (!recStartedRef.current) {
       setPhase('idle');
-      setRecDrag({ dx: 0, dy: 0 });
+      resetRecDrag();
       recTapPendingRef.current = false;
       return;
     }
@@ -361,7 +399,7 @@ export default function ChatScreen() {
     recPreparedRef.current = false;
     const uri = recorder.uri;
     setPhase('idle');
-    setRecDrag({ dx: 0, dy: 0 });
+    resetRecDrag();
     recTapPendingRef.current = false;
     if (!uri) return;
     // جهّز التسجيل اللي جاي في الخلفية دلوقتي (الإذن ممنوح خلاص)
@@ -389,14 +427,14 @@ export default function ChatScreen() {
       }
     }
     setPhase('idle');
-    setRecDrag({ dx: 0, dy: 0 });
+    resetRecDrag();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   };
 
   /** القفل بالسحب لفوق بيفتح واجهة التسجيل بالنقرة (واجهة واحدة موحدة) */
   const lockRecording = () => {
     if (!recorder.isRecording) return;
-    setRecDrag({ dx: 0, dy: 0 });
+    resetRecDrag();
     setMicPressed(false);
     setPhase('tap');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -466,14 +504,16 @@ export default function ChatScreen() {
       void stopAndSendRecording();
       return;
     }
-    setRecDrag({ dx: 0, dy: 0 });
+    resetRecDrag();
     void startRecording();
   };
   const recMove = (e: GestureResponderEvent) => {
-    setRecDrag({
-      dx: Math.min(0, e.nativeEvent.pageX - recStartPosRef.current.x),
-      dy: Math.min(0, e.nativeEvent.pageY - recStartPosRef.current.y),
-    });
+    const dx = Math.min(0, e.nativeEvent.pageX - recStartPosRef.current.x);
+    const dy = Math.min(0, e.nativeEvent.pageY - recStartPosRef.current.y);
+    // SharedValue بس — مفيش setState هنا، فالشاشة كلها مبتتعدش رسمها
+    // مع كل حركة إصبع؛ الأيقونات بتتحدث من الـ SharedValue مباشرة
+    recDragSV.value = { dx, dy };
+    updateRecZone(dx, dy);
   };
   const recRelease = (e: GestureResponderEvent) => {
     setMicPressed(false);
@@ -485,7 +525,7 @@ export default function ChatScreen() {
     // يكمل ويفتح الواجهة لما يبدأ.
     if (pressMs < REC_TAP_MS) {
       recTapPendingRef.current = true;
-      setRecDrag({ dx: 0, dy: 0 });
+      resetRecDrag();
       if (recorder.isRecording) setPhase('tap');
       return;
     }
@@ -512,11 +552,11 @@ export default function ChatScreen() {
     const pressMs = Date.now() - recPressAtRef.current;
     if (pressMs < REC_TAP_MS) {
       recTapPendingRef.current = true;
-      setRecDrag({ dx: 0, dy: 0 });
+      resetRecDrag();
       if (recorder.isRecording) setPhase('tap');
       return;
     }
-    if (recDrag.dx <= REC_CANCEL_DX) {
+    if (recDragSV.value.dx <= REC_CANCEL_DX) {
       void cancelRecording();
       return;
     }
@@ -641,16 +681,13 @@ export default function ChatScreen() {
     })();
   }, [ensureRecPrepared]);
 
-  // هزة خفيفة عند دخول منطقة الإلغاء/القفل أثناء سحب التسجيل
-  const prevRecZoneRef = useRef<'none' | 'cancel' | 'lock'>('none');
-  useEffect(() => {
-    const zone =
-      recDrag.dx <= REC_CANCEL_DX ? 'cancel' : recDrag.dy <= REC_LOCK_DY ? 'lock' : 'none';
-    if (zone !== prevRecZoneRef.current) {
-      prevRecZoneRef.current = zone;
-      if (zone !== 'none') Haptics.selectionAsync().catch(() => {});
-    }
-  }, [recDrag]);
+  // التجهيز يتجدد كل مرة ترجع للشات — الضغطة متستناش التجهيز أبدًا
+  // (الهزة عند دخول منطقة الإلغاء/القفل بقت في updateRecZone)
+  useFocusEffect(
+    useCallback(() => {
+      void ensureRecPrepared().catch(() => {});
+    }, [ensureRecPrepared]),
+  );
 
   // v1.6.0 — لما عنصر معلّق يتبعت بنجاح، شيله من العرض
   // (الرسالة الحقيقية بتوصل من الاشتراك الفوري — بيتفادى التكرار بالـ id)
@@ -1390,18 +1427,20 @@ export default function ChatScreen() {
     await sendPickedMedia(asset, asset.type === 'video');
   };
 
-  /** الكاميرا — من نفس مكتبة الصور (مش مكتبة جديدة) */
-  const onCamera = async () => {
+  /** الكاميرا — شاشة كاميرا جوّه التطبيق (كاميرا الهاتف نفسها، مش
+   *  معرض الصور — على الويب launchCameraAsync كان بيفتح المعرض).
+   *  الصورة بتتاخد لملف مؤقت وبتتمسح بعد الإرسال، مبتتحفظش على الهاتف. */
+  const onCamera = () => {
     setAttachOpen(false);
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) return;
-    const res = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images', 'videos'],
-      quality: 0.85,
+    if (!me || !conversationId) return;
+    router.push({
+      pathname: '/camera',
+      params: {
+        conversationId,
+        senderId: me.id,
+        replyToId: replyTo?.id ?? '',
+      },
     });
-    if (res.canceled || !res.assets[0]) return;
-    const asset = res.assets[0];
-    await sendPickedMedia(asset, asset.type === 'video');
   };
 
   const sheetDelete = async (m: Message) => {
@@ -1747,21 +1786,14 @@ export default function ChatScreen() {
             </View>
           ) : null}
           <View style={styles.composer}>
-            {/* أيقونة السلة بتظهر وتكبر كل ما السحب لليسار يقرّب من الإلغاء */}
-            {phase === 'recording' && recDrag.dx < -10 ? (
-              <View
+            {/* أيقونة السلة بتظهر وتكبر كل ما السحب لليسار يقرّب من الإلغاء —
+                بتتحدث من الـ SharedValue من غير إعادة رسم */}
+            {phase === 'recording' ? (
+              <Reanimated.View
                 pointerEvents="none"
-                style={[
-                  styles.recCancelIcon,
-                  {
-                    opacity: Math.min(1, -recDrag.dx / -REC_CANCEL_DX),
-                    transform: [
-                      { scale: 1 + Math.min(1, -recDrag.dx / 60) * 0.3 },
-                    ],
-                  },
-                ]}>
+                style={[styles.recCancelIcon, trashAnimStyle]}>
                 <Ionicons name="trash-outline" size={26} color={colors.danger} />
-              </View>
+              </Reanimated.View>
             ) : null}
             {/* زرار + زجاجي دائري (بدل 📎) — نفس وظيفة الإرفاق،
                 بس بالشكل المرجعي؛ بيختفي وقت التسجيل/التحرير */}
@@ -1787,12 +1819,12 @@ export default function ChatScreen() {
                   <Text
                     style={[
                       styles.recHint,
-                      recDrag.dx <= REC_CANCEL_DX && { color: colors.danger },
+                      recZone === 'cancel' && { color: colors.danger },
                     ]}
                     numberOfLines={1}>
-                    {recDrag.dx <= REC_CANCEL_DX
+                    {recZone === 'cancel'
                       ? t('chat.releaseToCancel')
-                      : recDrag.dy <= REC_LOCK_DY
+                      : recZone === 'lock'
                         ? t('chat.releaseToLock')
                         : t('chat.recHint')}
                   </Text>
@@ -1850,27 +1882,16 @@ export default function ChatScreen() {
                 {/* القفل فوق زرار المايك نفسه — مربوط بالمايك مش بموضع
                     ثابت في الشاشة، فبيظهر فوقه على طول زي واتساب */}
                 {phase === 'recording' ? (
-                  <View
+                  <Reanimated.View
                     pointerEvents="none"
-                    style={[
-                      styles.recLockIcon,
-                      {
-                        opacity: recDrag.dy < -10 ? Math.min(1, -recDrag.dy / -REC_LOCK_DY) : 0.55,
-                        transform: [
-                          {
-                            scale:
-                              1 + (recDrag.dy < -10 ? Math.min(1, -recDrag.dy / 60) * 0.25 : 0),
-                          },
-                        ],
-                      },
-                    ]}>
+                    style={[styles.recLockIcon, lockAnimStyle]}>
                     <Ionicons name="chevron-up" size={16} color={colors.muted} />
                     <Ionicons
-                      name={-recDrag.dy > 40 ? 'lock-closed' : 'lock-open-outline'}
+                      name={recZone === 'lock' ? 'lock-closed' : 'lock-open-outline'}
                       size={26}
                       color={colors.primaryBright}
                     />
-                  </View>
+                  </Reanimated.View>
                 ) : null}
                 {/* الزرار بيكبر ×1.4 من أول لحظة الضغط ويفضل كبير طول
                     الضغطة، وبيبقى زجاجي بنفسجي وهو بيسجّل */}

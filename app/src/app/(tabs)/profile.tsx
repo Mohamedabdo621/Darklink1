@@ -17,7 +17,9 @@ import {
   fetchMyReferralCount,
   type MyLevel,
 } from '../../services/economy';
-import { fetchMyReferralStats } from '../../services/timeline';
+import { fetchMyReferralStats, fetchTimeline } from '../../services/timeline';
+import PostCard from '../../components/PostCard';
+import type { Post } from '../../lib/types';
 import { ACHIEVEMENT_KEYS, fetchMyAchievements } from '../../services/features';
 import { avatarSignedUrl } from '../../services/profile';
 import { fonts, radius, spacing } from '../../theme';
@@ -37,6 +39,7 @@ export default function ProfileTab() {
   const [refCode, setRefCode] = useState('');
   const [refCount, setRefCount] = useState(0);
   const [refEarned, setRefEarned] = useState(0);
+  const [myPosts, setMyPosts] = useState<Post[]>([]);
 
   const inviteLink = `https://mohamedabdo621.github.io/Darklink1/register?ref=${refCode}`;
 
@@ -58,6 +61,7 @@ export default function ProfileTab() {
     setAvatar(await avatarSignedUrl(profile.avatar_url));
     setAchievements(await fetchMyAchievements(profile.id));
     setMyLevel(await fetchMyLevel());
+    setMyPosts((await fetchTimeline(undefined, 'mine')).slice(0, 3));
     const stats = await fetchMyReferralStats();
     if (stats) {
       setRefCode(stats.code);
@@ -146,6 +150,28 @@ export default function ProfileTab() {
             </View>
           </GlowCard>
         </View>
+
+        {/* منشوراتي — المثبّت أولاً */}
+        {myPosts.length > 0 ? (
+          <View style={{ marginTop: spacing.lg }}>
+            <Text style={styles.sectionTitle}>{t('profile.myPosts')}</Text>
+            {myPosts.map((p) => (
+              <PostCard
+                key={p.id}
+                post={p}
+                currentUserId={profile.id}
+                isAdmin={profile.is_admin}
+                onChanged={(np) =>
+                  setMyPosts((prev) => prev.map((x) => (x.id === np.id ? np : x)))
+                }
+                onDeleted={(id) => setMyPosts((prev) => prev.filter((x) => x.id !== id))}
+                onOpenComments={(pp) =>
+                  router.push({ pathname: '/post/[id]', params: { id: pp.id } })
+                }
+              />
+            ))}
+          </View>
+        ) : null}
 
         {/* المستوى والخبرة */}
         {myLevel ? (

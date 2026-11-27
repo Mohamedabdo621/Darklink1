@@ -185,9 +185,41 @@ export interface Post {
   author_id: string;
   body: string;
   media_path: string | null;
+  media_type: 'image' | 'video' | 'voice' | null;
+  voice_duration: number | null;
+  repost_of: string | null;
+  is_pinned: boolean;
+  poll: { question: string; options: { text: string }[] } | null;
+  poll_votes: number[] | null;
+  my_vote: number | null;
+  edited: boolean;
   created_at: string;
   shown_name: string;
   username: string | null;
+  avatar_url: string | null;
+  is_vip: boolean;
+  likes_count: number;
+  comments_count: number;
+  liked_by_me: boolean;
+  saved_by_me: boolean;
+  following_author: boolean;
+  repost_body: string | null;
+  repost_media_path: string | null;
+  repost_media_type: string | null;
+  repost_created_at: string | null;
+  repost_author_name: string | null;
+}
+
+/** بوست في شريط «الأكثر تفاعلًا اليوم» — نسخة مختصرة */
+export interface TrendingPost {
+  id: string;
+  author_id: string;
+  body: string;
+  media_path: string | null;
+  media_type: 'image' | 'video' | 'voice' | null;
+  voice_duration: number | null;
+  created_at: string;
+  shown_name: string;
   avatar_url: string | null;
   is_vip: boolean;
   likes_count: number;

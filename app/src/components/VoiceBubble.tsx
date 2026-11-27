@@ -14,15 +14,18 @@ function fmt(sec: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-/** فقاعة رسالة صوتية: تشغيل/إيقاف + تقدم + سرعة 1x/1.5x/2x + موجة صوتية */
+/** فقاعة رسالة صوتية: تشغيل/إيقاف + تقدم + سرعة 1x/1.5x/2x + موجة صوتية
+ *  (bucket افتراضي voice-notes — لبوستات المجتمع بيتبعت post-media) */
 export default function VoiceBubble({
   mediaPath,
   durationSec,
   mine,
+  bucket = 'voice-notes',
 }: {
   mediaPath: string | null;
   durationSec: number | null;
   mine: boolean;
+  bucket?: 'voice-notes' | 'post-media';
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -33,13 +36,13 @@ export default function VoiceBubble({
 
   useEffect(() => {
     let live = true;
-    mediaSignedUrl('voice-notes', mediaPath).then((u) => {
+    mediaSignedUrl(bucket, mediaPath).then((u) => {
       if (live) setUri(u);
     });
     return () => {
       live = false;
     };
-  }, [mediaPath]);
+  }, [mediaPath, bucket]);
 
   const duration = status.duration || durationSec || 0;
   const progress = duration > 0 ? Math.min(1, status.currentTime / duration) : 0;

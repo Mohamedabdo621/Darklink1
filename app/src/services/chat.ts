@@ -340,7 +340,7 @@ const mediaCache = new Map<string, { url: string; at: number }>();
 
 /** رابط موقّع لعرض وسائط محادثة أو رسالة صوتية */
 export async function mediaSignedUrl(
-  bucket: 'chat-media' | 'voice-notes',
+  bucket: 'chat-media' | 'voice-notes' | 'post-media',
   path: string | null,
 ): Promise<string | null> {
   if (!path) return null;

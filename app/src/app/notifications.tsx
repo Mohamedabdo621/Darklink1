@@ -97,6 +97,9 @@ export default function Notifications() {
       if (kind === 'post_comment') {
         return t('notifications.postComment');
       }
+      if (kind === 'post_new') {
+        return t('notifications.postNew');
+      }
       if (kind === 'story_like') {
         return t('notifications.storyLike');
       }
@@ -145,7 +148,9 @@ export default function Notifications() {
     if (
       n.type === 'account' &&
       typeof n.payload.kind === 'string' &&
-      (n.payload.kind === 'post_like' || n.payload.kind === 'post_comment') &&
+      (n.payload.kind === 'post_like' ||
+        n.payload.kind === 'post_comment' ||
+        n.payload.kind === 'post_new') &&
       typeof pid === 'string'
     ) {
       router.push({ pathname: '/post/[id]', params: { id: pid } });
