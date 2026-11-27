@@ -27,7 +27,7 @@ import {
 } from '../../services/chat';
 import { avatarSignedUrl } from '../../services/profile';
 import { blockUser, fetchPublicProfile } from '../../services/social';
-import { fonts, gradients, radius, spacing } from '../../theme';
+import { fonts, gradients, lightShadowGlowSoft, radius, shadowGlowSoft, spacing } from '../../theme';
 
 import { useTheme } from '../../contexts/ThemeContext';
 import type { ThemeColors } from '../../theme';
@@ -44,7 +44,7 @@ interface ChatRow {
 }
 
 export default function Chats() {
-  const { colors } = useTheme();
+  const { colors, resolved } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { profile: me } = useAuth();
@@ -208,7 +208,7 @@ export default function Chats() {
         <Text style={styles.actionLabel}>{t('chats.hide')}</Text>
       </TouchableOpacity>
       <TouchableOpacity
-        style={[styles.actionBtn, { backgroundColor: colors.surfaceLight }]}
+        style={[styles.actionBtn, { backgroundColor: colors.primary }]}
         onPress={() => onBlock(item)}>
         <Text style={styles.actionIcon}>🚫</Text>
         <Text style={styles.actionLabel}>{t('userProfile.block')}</Text>
@@ -235,9 +235,12 @@ export default function Chats() {
             overshootRight={false}
             renderLeftActions={() => renderActions(item)}
             renderRightActions={() => renderActions(item)}>
-          <TouchableOpacity
-            style={styles.row}
-            onLongPress={() => onRowLongPress(item)}
+      <TouchableOpacity
+        style={[
+          styles.row,
+          resolved === 'light' ? lightShadowGlowSoft : shadowGlowSoft,
+        ]}
+        onLongPress={() => onRowLongPress(item)}
             onPress={() =>
               router.push({ pathname: '/chat/[id]', params: { id: item.conversationId } })
             }>
@@ -305,7 +308,8 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.glassBorder,
-    backgroundColor: colors.glass,
+    // معتم تمامًا — لو شفاف زراير السحب الحمراء اللي وراه تبان من خلاله
+    backgroundColor: colors.surface,
   },
   actions: {
     flexDirection: 'row',
@@ -314,7 +318,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     overflow: 'hidden',
   },
   actionBtn: {
-    width: 76,
+    width: 84,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
