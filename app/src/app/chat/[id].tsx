@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { Animated, FlatList, Image, Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, FlatList, I18nManager, Image, Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
@@ -85,6 +85,13 @@ const REC_TAP_MS = 200;
 const EMPTY_REACTIONS: { emoji: string; count: number; mine: boolean }[] = [];
 /** تدرج الفقاعة المرسلة (زي الصورة المرجعية): بنفسجي → فوشيا */
 const SENT_GRADIENT = ['#7c3aed', '#a855f7', '#d946ef'] as const;
+
+/** محاذاة الفقاعة في الشات: رسايلي على اليمين دايمًا (في RTL ده flex-start
+ *  في العمود، وفي LTR ده flex-end) — alignSelf لوحده بيتقلب مع الاتجاه */
+function alignFor(mine: boolean): 'flex-start' | 'flex-end' {
+  const rtl = I18nManager.isRTL;
+  return mine ? (rtl ? 'flex-start' : 'flex-end') : (rtl ? 'flex-end' : 'flex-start');
+}
 
 /** رسالة إيموجي بس (1–3 إيموجي، من غير كلام) — بتتعرض من غير فقاعة زي واتساب */
 function isEmojiOnly(text: string): boolean {
@@ -925,7 +932,7 @@ export default function ChatScreen() {
             {pill}
             <View
               style={{
-                alignSelf: mine ? 'flex-end' : 'flex-start',
+                alignSelf: alignFor(mine),
                 maxWidth: '75%',
                 marginBottom: gap,
               }}>
@@ -948,7 +955,7 @@ export default function ChatScreen() {
             overshootLeft={false}
             overshootRight={false}
             containerStyle={{
-              alignSelf: mine ? 'flex-end' : 'flex-start',
+              alignSelf: alignFor(mine),
               maxWidth: '75%',
               marginBottom: gap,
             }}
@@ -2242,7 +2249,7 @@ const PendingBubble = React.memo(function PendingBubble({ item }: { item: Outbox
     return (
       <View
         style={{
-          alignSelf: 'flex-end',
+          alignSelf: alignFor(true),
           maxWidth: '75%',
           marginBottom: 10,
           opacity: 0.65,
@@ -2265,7 +2272,7 @@ const PendingBubble = React.memo(function PendingBubble({ item }: { item: Outbox
   return (
     <View
       style={{
-        alignSelf: 'flex-end',
+        alignSelf: alignFor(true),
         maxWidth: '75%',
         marginBottom: 10,
         opacity: 0.65,
