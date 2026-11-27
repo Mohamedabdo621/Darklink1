@@ -30,6 +30,8 @@ export interface ThemePalette {
   muted: string;
   faint: string;
   danger: string;
+  /** نسخة شفافة من الأحمر — زر الحذف في سحب المحادثات (الشفافية على الزر مش على الصف) */
+  dangerSoft: string;
   success: string;
   white: string;
   /** خلفية شريط التبويبات السفلي (شبه شفافة) */
@@ -64,6 +66,7 @@ export const darkColors: ThemePalette = {
   muted: '#b3a1d1',
   faint: '#7a6a96',
   danger: '#fb4d6d',
+  dangerSoft: 'rgba(251, 77, 109, 0.80)',
   success: '#34d399',
   white: '#ffffff',
   tabBar: 'rgba(13, 2, 24, 0.88)',
@@ -98,6 +101,7 @@ export const lightColors: ThemePalette = {
   muted: '#6b5a8a',
   faint: '#9a8ab5',
   danger: '#e11d48',
+  dangerSoft: 'rgba(225, 29, 72, 0.80)',
   success: '#059669',
   white: '#ffffff',
   tabBar: 'rgba(255, 255, 255, 0.92)',

@@ -10,6 +10,8 @@ import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import type { SharedValue } from 'react-native-reanimated';
 import { Avatar } from '../../components/Avatar';
 import { Screen } from '../../components/ui';
 import { TabSwipe } from '../../components/TabSwipe';
@@ -41,6 +43,48 @@ interface ChatRow {
   mine: boolean;
   pinned: boolean;
   muted: boolean;
+}
+
+/**
+ * أزرار السحب (حذف/حظر) — ظهورها مربوط بتقدّم السحب (progress):
+ * مخفية تمامًا عند الراحة (progress = 0) فلا تبان من خلال الصف ولا على
+ * الجنبين، وتظهر بالتدريج مع انزلاق الصف؛ والجنب غير النشط يفضل مخفي
+ * فلا يتداخل مع نص الصف. زر الحذف نفسه شفاف شوية (dangerSoft) زي
+ * الأصل — الشفافية على الزر مش على الصف (الصف معتم تمامًا).
+ */
+function SwipeActions({
+  progress,
+  item,
+  styles,
+  colors,
+  onHide,
+  onBlock,
+}: {
+  progress: SharedValue<number>;
+  item: ChatRow;
+  styles: ReturnType<typeof makeStyles>;
+  colors: ThemeColors;
+  onHide: (item: ChatRow) => void;
+  onBlock: (item: ChatRow) => void;
+}) {
+  const { t } = useTranslation();
+  const fade = useAnimatedStyle(() => ({ opacity: progress.value }));
+  return (
+    <Animated.View style={[styles.actions, fade]}>
+      <TouchableOpacity
+        style={[styles.actionBtn, { backgroundColor: colors.dangerSoft }]}
+        onPress={() => onHide(item)}>
+        <Text style={styles.actionIcon}>🗑</Text>
+        <Text style={styles.actionLabel}>{t('chats.hide')}</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.actionBtn, { backgroundColor: colors.primary }]}
+        onPress={() => onBlock(item)}>
+        <Text style={styles.actionIcon}>🚫</Text>
+        <Text style={styles.actionLabel}>{t('userProfile.block')}</Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
 }
 
 export default function Chats() {
@@ -199,23 +243,6 @@ export default function Chats() {
     ]);
   };
 
-  const renderActions = (item: ChatRow) => (
-    <View style={styles.actions}>
-      <TouchableOpacity
-        style={[styles.actionBtn, { backgroundColor: colors.danger }]}
-        onPress={() => onHide(item)}>
-        <Text style={styles.actionIcon}>🗑</Text>
-        <Text style={styles.actionLabel}>{t('chats.hide')}</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.actionBtn, { backgroundColor: colors.primary }]}
-        onPress={() => onBlock(item)}>
-        <Text style={styles.actionIcon}>🚫</Text>
-        <Text style={styles.actionLabel}>{t('userProfile.block')}</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
   return (
     <TabSwipe current="chats">
       <Screen>
@@ -233,8 +260,26 @@ export default function Chats() {
             rightThreshold={40}
             overshootLeft={false}
             overshootRight={false}
-            renderLeftActions={() => renderActions(item)}
-            renderRightActions={() => renderActions(item)}>
+            renderLeftActions={(progress) => (
+              <SwipeActions
+                progress={progress}
+                item={item}
+                styles={styles}
+                colors={colors}
+                onHide={onHide}
+                onBlock={onBlock}
+              />
+            )}
+            renderRightActions={(progress) => (
+              <SwipeActions
+                progress={progress}
+                item={item}
+                styles={styles}
+                colors={colors}
+                onHide={onHide}
+                onBlock={onBlock}
+              />
+            )}>
       <TouchableOpacity
         style={[
           styles.row,
