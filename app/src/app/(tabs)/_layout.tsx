@@ -1,11 +1,12 @@
 import React, { forwardRef, useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text } from 'react-native';
 import { Tabs, TabList, TabTrigger, TabSlot } from 'expo-router/ui';
 import type { TabTriggerSlotProps } from 'expo-router/ui';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
-import { fonts } from '../../theme';
+import { fonts, gradients } from '../../theme';
 
 import { useTheme } from '../../contexts/ThemeContext';
 import type { ThemeColors } from '../../theme';
@@ -35,24 +36,24 @@ const TabButton = forwardRef<
         props.onPress?.(e);
       }}
       style={styles.tab}>
-      <Ionicons
-        name={(isFocused ? iconFocused : icon) as never}
-        size={24}
-        color={isFocused ? colors.accent : colors.faint}
-        style={
-          isFocused
-            ? { textShadowColor: 'rgba(232,121,249,0.8)', textShadowRadius: 10 }
-            : undefined
-        }
-      />
+      {isFocused ? (
+        <LinearGradient
+          colors={[...gradients.primary]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.activeIcon}>
+          <Ionicons name={iconFocused as never} size={22} color="#ffffff" />
+        </LinearGradient>
+      ) : (
+        <Ionicons name={icon as never} size={24} color={colors.muted} />
+      )}
       <Text
         style={[
           styles.label,
-          { color: isFocused ? colors.primaryBright : colors.faint },
+          { color: isFocused ? colors.primaryBright : colors.muted },
         ]}>
         {label}
       </Text>
-      {isFocused ? <View style={styles.dot} /> : null}
     </Pressable>
   );
 });
@@ -87,24 +88,22 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   bar: {
     flexDirection: 'row',
     backgroundColor: colors.tabBar,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.glassBorder,
+    borderTopWidth: 1,
+    borderTopColor: colors.stroke,
     height: 62,
     paddingBottom: 8,
     paddingTop: 6,
   },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2 },
   label: { fontSize: fonts.sizes.xs, fontWeight: fonts.weights.medium },
-  dot: {
-    position: 'absolute',
-    top: -6,
-    width: 18,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: colors.accent,
+  // الأيقونة النشطة: كبسولة بتدرج السلسلة البنفسجي + توهج — هوية التطبيق
+  activeIcon: {
+    borderRadius: 999,
+    padding: 7,
     shadowColor: colors.accent,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 6,
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+    elevation: 5,
   },
 });

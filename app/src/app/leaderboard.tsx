@@ -1,8 +1,9 @@
 import React, { useCallback, useState, useMemo } from 'react';
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Screen } from '../components/ui';
+import { Avatar } from '../components/Avatar';
 import { fetchLeaderboard, type LeaderRow } from '../services/features';
 import { avatarSignedUrl } from '../services/profile';
 import { fonts, spacing } from '../theme';
@@ -76,13 +77,11 @@ export default function Leaderboard() {
                 router.push({ pathname: '/user/[id]', params: { id: r.user_id } })
               }>
               <Text style={styles.rank}>{medals[i] ?? `${i + 1}`}</Text>
-              {avatars[r.user_id] ? (
-                <Image source={{ uri: avatars[r.user_id]! }} style={styles.avatar} />
-              ) : (
-                <View style={[styles.avatar, styles.avatarFallback]}>
-                  <Text>👤</Text>
-                </View>
-              )}
+              <Avatar
+                uri={avatars[r.user_id]}
+                name={r.profile?.shown_name}
+                size={46}
+              />
               <View style={{ flex: 1 }}>
                 <Text style={styles.name} numberOfLines={1}>
                   {r.profile?.shown_name ?? '—'}

@@ -4,6 +4,8 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Screen } from '../components/ui';
+import { Avatar } from '../components/Avatar';
+import { formatTimeAr } from '../lib/format';
 import { useAuth } from '../contexts/AuthContext';
 import { appAlert } from '../lib/dialog';
 import type { Story } from '../lib/types';
@@ -116,19 +118,10 @@ export default function StoryViewer() {
         ))}
       </View>
       <View style={styles.header}>
-        {avatar ? (
-          <Image source={{ uri: avatar }} style={styles.avatar} />
-        ) : (
-          <View style={[styles.avatar, styles.avatarFallback]}>
-            <Text>👤</Text>
-          </View>
-        )}
+        <Avatar uri={avatar} name={name} size={34} />
         <Text style={styles.name}>{name}</Text>
         <Text style={styles.time}>
-          {new Date(current.created_at).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          })}
+          {formatTimeAr(current.created_at)}
         </Text>
         <View style={{ flex: 1 }} />
         {mine ? (

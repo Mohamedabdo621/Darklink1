@@ -5,6 +5,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { TabSwipe } from '../../components/TabSwipe';
 import { useTranslation } from 'react-i18next';
 import { Chip, GlowCard, GradientRing, NeonButton, Screen } from '../../components/ui';
+import { AvatarInitial } from '../../components/Avatar';
 import { useAuth } from '../../contexts/AuthContext';
 import { appAlert } from '../../lib/dialog';
 import { supabase } from '../../lib/supabase';
@@ -91,9 +92,7 @@ export default function ProfileTab() {
             {avatar ? (
               <Image source={{ uri: avatar }} style={styles.avatar} />
             ) : (
-              <View style={[styles.avatar, styles.avatarFallback]}>
-                <Text style={{ fontSize: 40 }}>👤</Text>
-              </View>
+              <AvatarInitial name={shownNameOf(profile)} size={104} />
             )}
           </GradientRing>
           <Text style={styles.name}>{shownNameOf(profile)}</Text>

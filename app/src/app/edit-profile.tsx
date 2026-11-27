@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { appAlert } from '../lib/dialog';
 import { INTEREST_KEYS, MAX_INTERESTS } from '../lib/interests';
@@ -7,6 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { GlowCard, NeonButton, NeonInput, Screen, ToggleRow } from '../components/ui';
+import { Avatar } from '../components/Avatar';
 import { useAuth } from '../contexts/AuthContext';
 import type { IdentityMode, Profile } from '../lib/types';
 import {
@@ -117,13 +118,11 @@ function EditProfileForm({ profile }: { profile: Profile }) {
 
         <View style={{ alignItems: 'center', marginBottom: spacing.lg }}>
           <TouchableOpacity onPress={pickPhoto}>
-            {avatar ? (
-              <Image source={{ uri: avatar }} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatar, styles.avatarFallback]}>
-                <Text style={{ fontSize: 36 }}>👤</Text>
-              </View>
-            )}
+            <Avatar
+              uri={avatar}
+              name={displayName.trim() || profile.anonymous_alias}
+              size={96}
+            />
             <Text style={styles.changePhoto}>📷 {t('editProfile.changePhoto')}</Text>
           </TouchableOpacity>
         </View>

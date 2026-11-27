@@ -34,6 +34,10 @@ export interface ThemePalette {
   white: string;
   /** خلفية شريط التبويبات السفلي (شبه شفافة) */
   tabBar: string;
+  /** توهجات خلفية الشاشة (الفقاعات الزخرفية) — بنفسجي/وردي بهوية التطبيق */
+  glowTop: string;
+  glowMid: string;
+  glowBottom: string;
 }
 
 export const darkColors: ThemePalette = {
@@ -63,20 +67,25 @@ export const darkColors: ThemePalette = {
   success: '#34d399',
   white: '#ffffff',
   tabBar: 'rgba(13, 2, 24, 0.88)',
+  glowTop: 'rgba(124,58,237,0.28)',
+  glowMid: 'rgba(34,211,238,0.10)',
+  glowBottom: 'rgba(217,70,239,0.18)',
 };
 
-/** الوضع الفاتح: أبيض-لافندر، نص بنفسجي غامق، نفس التدرج البنفسجي للأزرار */
+/** الوضع الفاتح: أبيض-لافندر، نص بنفسجي غامق، نفس التدرج البنفسجي للأزرار.
+ * التوهجات هنا أعمق وأكثر تشبعًا (بنفسجي/وردي فقط، بلا سماوي باهت) عشان
+ * الخلفية تقرأ DARKLINK مش صفحة بيضاء عامة. */
 export const lightColors: ThemePalette = {
   bg: '#faf7ff',
   bgDeep: '#f3eefe',
   surface: '#ffffff',
-  surfaceLight: '#f1e9fd',
-  glass: 'rgba(124, 58, 237, 0.06)',
-  glassStrong: 'rgba(124, 58, 237, 0.10)',
-  glassBorder: 'rgba(124, 58, 237, 0.16)',
+  surfaceLight: '#ece2fb',
+  glass: 'rgba(124, 58, 237, 0.08)',
+  glassStrong: 'rgba(124, 58, 237, 0.12)',
+  glassBorder: 'rgba(124, 58, 237, 0.20)',
   glassBorderStrong: 'rgba(168, 85, 247, 0.45)',
-  card: 'rgba(124, 58, 237, 0.07)',
-  stroke: 'rgba(124, 58, 237, 0.22)',
+  card: 'rgba(124, 58, 237, 0.09)',
+  stroke: 'rgba(124, 58, 237, 0.28)',
   primary: '#a855f7',
   primaryBright: '#9333ea',
   accent: '#c026d3',
@@ -92,6 +101,9 @@ export const lightColors: ThemePalette = {
   success: '#059669',
   white: '#ffffff',
   tabBar: 'rgba(255, 255, 255, 0.92)',
+  glowTop: 'rgba(124,58,237,0.36)',
+  glowMid: 'rgba(217,70,239,0.15)',
+  glowBottom: 'rgba(192,38,211,0.28)',
 };
 
 /** اللوحة الافتراضية (الداكنة) — للتوافق مع أي كود لم يُهاجَر بعد */

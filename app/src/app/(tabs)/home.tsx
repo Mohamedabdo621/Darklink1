@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { TabSwipe } from '../../components/TabSwipe';
 import { useTranslation } from 'react-i18next';
 import { Chip, GlowCard, GradientRing, Logo, NeonButton, Screen } from '../../components/ui';
+import { AvatarInitial } from '../../components/Avatar';
 import PostCard from '../../components/PostCard';
 import { useAuth } from '../../contexts/AuthContext';
 import { appAlert } from '../../lib/dialog';
@@ -164,9 +165,7 @@ export default function Home() {
                 {avatar ? (
                   <Image source={{ uri: avatar }} style={styles.storyAvatar} />
                 ) : (
-                  <View style={[styles.storyAvatar, styles.avatarFallback]}>
-                    <Text style={{ fontSize: 20 }}>👤</Text>
-                  </View>
+                  <AvatarInitial name={name} size={54} />
                 )}
               </GradientRing>
               <View style={styles.storyPlus}>
@@ -193,9 +192,7 @@ export default function Home() {
                   {g.avatar ? (
                     <Image source={{ uri: g.avatar }} style={styles.storyAvatar} />
                   ) : (
-                    <View style={[styles.storyAvatar, styles.avatarFallback]}>
-                      <Text style={{ fontSize: 20 }}>👤</Text>
-                    </View>
+                    <AvatarInitial name={g.user?.shown_name} size={54} />
                   )}
                 </GradientRing>
                 <Text style={styles.storyLabel} numberOfLines={1}>
@@ -211,9 +208,7 @@ export default function Home() {
               {avatar ? (
                 <Image source={{ uri: avatar }} style={styles.avatar} />
               ) : (
-                <View style={[styles.avatar, styles.avatarFallback]}>
-                  <Text style={{ fontSize: 22 }}>👤</Text>
-                </View>
+                <AvatarInitial name={name} size={56} />
               )}
             </GradientRing>
             <View style={{ flex: 1 }}>

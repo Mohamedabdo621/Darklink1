@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,6 +11,7 @@ import {
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Chip, NeonInput, Screen } from '../../components/ui';
+import { Avatar } from '../../components/Avatar';
 import { TabSwipe } from '../../components/TabSwipe';
 import { INTEREST_KEYS } from '../../lib/interests';
 import type { PublicProfile } from '../../lib/types';
@@ -167,13 +167,7 @@ function DiscoverCard({ item }: { item: PublicProfile }) {
     <TouchableOpacity
       style={styles.card}
       onPress={() => router.push({ pathname: '/user/[id]', params: { id: item.id } })}>
-      {avatar ? (
-        <Image source={{ uri: avatar }} style={styles.cardAvatar} />
-      ) : (
-        <View style={[styles.cardAvatar, styles.avatarFallback]}>
-          <Text style={{ fontSize: 30 }}>👤</Text>
-        </View>
-      )}
+      <Avatar uri={avatar} name={item.shown_name} size={72} />
       <Text style={styles.cardName} numberOfLines={1}>
         {item.shown_name}
       </Text>

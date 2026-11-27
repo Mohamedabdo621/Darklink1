@@ -334,7 +334,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     width: 320,
     height: 320,
     borderRadius: 160,
-    backgroundColor: 'rgba(124,58,237,0.28)',
+    backgroundColor: colors.glowTop,
   },
   glowMid: {
     position: 'absolute',
@@ -343,7 +343,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     width: 260,
     height: 260,
     borderRadius: 130,
-    backgroundColor: 'rgba(34,211,238,0.10)',
+    backgroundColor: colors.glowMid,
   },
   glowBottom: {
     position: 'absolute',
@@ -352,7 +352,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     width: 320,
     height: 320,
     borderRadius: 160,
-    backgroundColor: 'rgba(217,70,239,0.18)',
+    backgroundColor: colors.glowBottom,
   },
   logo: {
     color: colors.text,

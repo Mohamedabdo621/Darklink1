@@ -1,8 +1,9 @@
 import React, { useCallback, useState, useMemo } from 'react';
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { NeonButton, Screen } from '../components/ui';
+import { Avatar } from '../components/Avatar';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchMyVisitors, type VisitRow } from '../services/features';
 import { avatarSignedUrl } from '../services/profile';
@@ -74,16 +75,11 @@ export default function ProfileVisitors() {
                     params: { id: r.visitor.id },
                   })
                 }>
-                {avatars[r.visitor.id] ? (
-                  <Image
-                    source={{ uri: avatars[r.visitor.id]! }}
-                    style={styles.avatar}
-                  />
-                ) : (
-                  <View style={[styles.avatar, styles.avatarFallback]}>
-                    <Text>👤</Text>
-                  </View>
-                )}
+                <Avatar
+                  uri={avatars[r.visitor.id]}
+                  name={r.visitor.shown_name}
+                  size={46}
+                />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.name} numberOfLines={1}>
                     {r.visitor.shown_name}

@@ -5,6 +5,8 @@ import { appAlert, appPrompt } from '../../lib/dialog';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Chip, GlowCard, NeonButton, Screen } from '../../components/ui';
+import { Avatar } from '../../components/Avatar';
+import { formatTimeAr } from '../../lib/format';
 import { useAuth } from '../../contexts/AuthContext';
 import { giftEmoji, giftImage } from '../../lib/giftAssets';
 import type { PublicProfile } from '../../lib/types';
@@ -58,7 +60,7 @@ export default function UserProfile() {
         setSeenText(
           Date.now() - seen.getTime() < 90000
             ? `● ${t('chat.online')}`
-            : `${t('chat.lastSeen')} ${seen.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+            : `${t('chat.lastSeen')} ${formatTimeAr(seen)}`,
         );
       } else setSeenText(null);
     }
@@ -117,13 +119,7 @@ export default function UserProfile() {
     <Screen>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={{ alignItems: 'center', marginTop: spacing.lg }}>
-          {avatar ? (
-            <Image source={{ uri: avatar }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatar, styles.avatarFallback]}>
-              <Text style={{ fontSize: 40 }}>👤</Text>
-            </View>
-          )}
+          <Avatar uri={avatar} name={user.shown_name} size={104} />
           <Text style={styles.name}>{user.shown_name}</Text>
           {user.username ? (
             <Text style={{ color: colors.faint }}>@{user.username}</Text>

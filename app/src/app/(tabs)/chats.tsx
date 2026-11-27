@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   FlatList,
-  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -9,11 +8,14 @@ import {
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { LinearGradient } from 'expo-linear-gradient';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
+import { Avatar } from '../../components/Avatar';
 import { Screen } from '../../components/ui';
 import { TabSwipe } from '../../components/TabSwipe';
 import { useAuth } from '../../contexts/AuthContext';
 import { appAlert } from '../../lib/dialog';
+import { formatTimeAr } from '../../lib/format';
 import { supabase } from '../../lib/supabase';
 import type { PublicProfile } from '../../lib/types';
 import {
@@ -25,7 +27,7 @@ import {
 } from '../../services/chat';
 import { avatarSignedUrl } from '../../services/profile';
 import { blockUser, fetchPublicProfile } from '../../services/social';
-import { fonts, radius, spacing } from '../../theme';
+import { fonts, gradients, radius, spacing } from '../../theme';
 
 import { useTheme } from '../../contexts/ThemeContext';
 import type { ThemeColors } from '../../theme';
@@ -85,12 +87,7 @@ export default function Chats() {
         other,
         avatar: other ? await avatarSignedUrl(other.avatar_url) : null,
         preview: previewFor(last),
-        time: last
-          ? new Date(last.created_at).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            })
-          : '',
+        time: last ? formatTimeAr(last.created_at) : '',
         unread,
         mine: last?.sender_id === me.id,
         pinned: (c.pinned_for ?? []).includes(me.id),
@@ -244,13 +241,11 @@ export default function Chats() {
             onPress={() =>
               router.push({ pathname: '/chat/[id]', params: { id: item.conversationId } })
             }>
-            {item.avatar ? (
-              <Image source={{ uri: item.avatar }} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatar, styles.avatarFallback]}>
-                <Text style={{ fontSize: 20 }}>👤</Text>
-              </View>
-            )}
+            <Avatar
+              uri={item.avatar}
+              name={item.other?.shown_name}
+              size={52}
+            />
             <View style={{ flex: 1 }}>
               <Text style={styles.name} numberOfLines={1}>
                 {item.other?.shown_name ?? '—'}
@@ -258,17 +253,23 @@ export default function Chats() {
                 {item.pinned ? ' 📌' : ''}
                 {item.muted ? ' 🔇' : ''}
               </Text>
-              <Text style={styles.preview} numberOfLines={1}>
+              <Text
+                style={[styles.preview, !item.preview && styles.previewEmpty]}
+                numberOfLines={1}>
                 {item.mine && item.preview ? t('chats.you') : ''}
-                {item.preview}
+                {item.preview || t('chats.noMessages')}
               </Text>
             </View>
             <View style={{ alignItems: 'flex-end', gap: 5 }}>
               <Text style={styles.time}>{item.time}</Text>
               {item.unread > 0 ? (
-                <View style={styles.badge}>
+                <LinearGradient
+                  colors={[...gradients.primary]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.badge}>
                   <Text style={styles.badgeText}>{item.unread}</Text>
-                </View>
+                </LinearGradient>
               ) : null}
             </View>
           </TouchableOpacity>
@@ -298,12 +299,20 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.stroke,
-    backgroundColor: colors.bg,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    marginVertical: 4,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.glass,
   },
-  actions: { flexDirection: 'row' },
+  actions: {
+    flexDirection: 'row',
+    marginVertical: 4,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+  },
   actionBtn: {
     width: 76,
     alignItems: 'center',
@@ -326,9 +335,9 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   name: { color: colors.text, fontSize: fonts.sizes.md, fontWeight: fonts.weights.bold },
   preview: { color: colors.muted, fontSize: fonts.sizes.sm, marginTop: 2 },
+  previewEmpty: { color: colors.faint },
   time: { color: colors.faint, fontSize: fonts.sizes.xs },
   badge: {
-    backgroundColor: colors.accent,
     borderRadius: radius.full,
     minWidth: 20,
     height: 20,

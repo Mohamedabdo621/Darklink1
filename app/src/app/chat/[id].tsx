@@ -17,6 +17,8 @@ import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import VoiceBubble from '../../components/VoiceBubble';
 import GiftAnimation from '../../components/GiftAnimation';
+import { Avatar } from '../../components/Avatar';
+import { formatTimeAr } from '../../lib/format';
 import { useAuth } from '../../contexts/AuthContext';
 import { giftImage } from '../../lib/giftAssets';
 import { supabase } from '../../lib/supabase';
@@ -722,13 +724,7 @@ export default function ChatScreen() {
           onPress={() =>
             otherId && router.push({ pathname: '/user/[id]', params: { id: otherId } })
           }>
-          {otherAvatar ? (
-            <Image source={{ uri: otherAvatar }} style={styles.headerAvatar} />
-          ) : (
-            <View style={[styles.headerAvatar, styles.avatarFallback]}>
-              <Text>👤</Text>
-            </View>
-          )}
+          <Avatar uri={otherAvatar} name={other?.shown_name} size={38} />
           <View>
             <Text style={styles.headerName}>
               {other?.shown_name ?? '...'}
@@ -741,11 +737,7 @@ export default function ChatScreen() {
                 <Text style={styles.statusOnline}>● {t('chat.online')}</Text>
               ) : (
                 <Text style={styles.statusSeen}>
-                  {t('chat.lastSeen')}{' '}
-                  {new Date(other.last_seen_at).toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
+                  {`${t('chat.lastSeen')} ${formatTimeAr(other.last_seen_at)}`}
                 </Text>
               )
             ) : null}
@@ -1183,10 +1175,7 @@ function MessageBubble({
     };
   }, [m.type, m.media_path, dataSaver, forceLoad]);
 
-  const time = new Date(m.created_at).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const time = formatTimeAr(m.created_at);
 
   return (
     <TouchableOpacity onLongPress={onLongPress} activeOpacity={0.85}>
@@ -1343,6 +1332,10 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     borderColor: colors.stroke,
     padding: spacing.md,
     paddingBottom: spacing.xl,
+    // على الشاشات العريضة الورقة بعرض محدود ومتمركزة بدل ما تملأ العرض كله
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
   },
   emojiRow: {
     flexDirection: 'row',

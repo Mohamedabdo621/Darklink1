@@ -180,6 +180,7 @@ export const ar = {
   chats: {
     title: 'المحادثات',
     empty: 'لا محادثات بعد — اكتشف ناس وابدأ أول محادثة',
+    noMessages: 'لا رسائل بعد',
     voiceNote: '🎤 رسالة صوتية',
     photo: '🖼 صورة',
     video: '🎬 فيديو',
@@ -749,6 +750,7 @@ export const en: typeof ar = {
   chats: {
     title: 'Chats',
     empty: 'No chats yet — discover people and start your first conversation',
+    noMessages: 'No messages yet',
     voiceNote: '🎤 Voice note',
     photo: '🖼 Photo',
     video: '🎬 Video',

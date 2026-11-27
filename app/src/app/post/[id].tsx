@@ -4,6 +4,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { GlowCard, GradientRing, NeonButton, Screen } from '../../components/ui';
+import { AvatarInitial } from '../../components/Avatar';
 import { useAuth } from '../../contexts/AuthContext';
 import { avatarSignedUrl } from '../../services/profile';
 import {
@@ -77,9 +78,7 @@ export default function PostDetail() {
           <GlowCard>
             <View style={styles.header}>
               <GradientRing size={44}>
-                <View style={[styles.avatar, styles.avatarFallback]}>
-                  <Text style={{ fontSize: 16 }}>👤</Text>
-                </View>
+                <AvatarInitial name={post.shown_name} size={38} />
               </GradientRing>
               <View>
                 <Text style={styles.name}>
@@ -109,9 +108,7 @@ export default function PostDetail() {
                 {avatars[c.user_id] ? (
                   <Image source={{ uri: avatars[c.user_id] }} style={styles.cAvatar} />
                 ) : (
-                  <View style={[styles.cAvatar, styles.avatarFallback]}>
-                    <Text style={{ fontSize: 14 }}>👤</Text>
-                  </View>
+                  <AvatarInitial name={c.shown_name} size={30} />
                 )}
               </GradientRing>
               <View style={{ flex: 1 }}>
