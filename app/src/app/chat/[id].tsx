@@ -1224,7 +1224,7 @@ export default function ChatScreen() {
     <View style={styles.root}>
       {/* الترويسة — مسافة الأمان الحقيقية بتاعة الجهاز (مش رقم ثابت)،
           وخلفية الهيدر بتملى المساحة دي فمفيش فراغ فوقه */}
-      <View style={[styles.header, { paddingTop: insets.top }]}>
+      <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color={colors.text} />
         </TouchableOpacity>
@@ -1235,7 +1235,7 @@ export default function ChatScreen() {
           }>
           <Avatar uri={otherAvatar} name={other?.shown_name} size={38} />
           <View>
-            <Text style={styles.headerName}>
+            <Text style={styles.headerName} numberOfLines={1} ellipsizeMode="tail">
               {other?.shown_name ?? '...'}
               {other?.is_vip ? ' 👑' : ''}
             </Text>
@@ -1972,7 +1972,8 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
+    minHeight: 60,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.stroke,
     backgroundColor: colors.surface,
@@ -2090,7 +2091,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   /** المرسلة: بنفسجي شفاف 35% (65% عتامة) — النص والموجة والوقت
    *  والصحات والشارة بيفضلوا 100% معتمين (الشفافية في الخلفية بس) */
   bubbleMine: {
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.primaryCalm,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.28)',
     borderBottomEndRadius: 6,
