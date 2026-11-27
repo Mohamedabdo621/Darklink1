@@ -166,6 +166,29 @@ export async function fetchMessages(conversationId: string): Promise<Message[]> 
   return msgs;
 }
 
+/** رسائل أقدم من رسالة معيّنة (للنطّ لرسالة أصلية قديمة مش في آخر ١٠٠) */
+export async function fetchMessagesBefore(
+  conversationId: string,
+  before: string,
+): Promise<Message[]> {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('conversation_id', conversationId)
+    .lt('created_at', before)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) return [];
+  const msgs = (data ?? []) as Message[];
+  const previews = await fetchReplyPreviews(
+    msgs.map((m) => m.reply_to_id).filter(Boolean) as string[],
+  );
+  for (const m of msgs) {
+    if (m.reply_to_id) m.reply_preview = previews.get(m.reply_to_id) ?? null;
+  }
+  return msgs;
+}
+
 export async function markConversationRead(conversationId: string): Promise<void> {
   await supabase.rpc('mark_conversation_read', { p_conversation: conversationId });
 }

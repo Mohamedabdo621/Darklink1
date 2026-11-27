@@ -41,6 +41,7 @@ import {
   editMessage,
   fetchHiddenMessageIds,
   fetchMessages,
+  fetchMessagesBefore,
   fetchReactions,
   fetchReplyPreview,
   hideMessageForMe,
@@ -63,7 +64,7 @@ import {
   reportUser,
   unblockUser,
 } from '../../services/social';
-import { fonts, radius, spacing } from '../../theme';
+import { fonts, lightShadowGlowSoft, radius, shadowGlowSoft, spacing } from '../../theme';
 
 import { useTheme } from '../../contexts/ThemeContext';
 import type { ThemeColors } from '../../theme';
@@ -82,9 +83,14 @@ const REC_TAP_MS = 200;
 const EMPTY_REACTIONS: { emoji: string; count: number; mine: boolean }[] = [];
 
 export default function ChatScreen() {
-  const { colors } = useTheme();
+  const { colors, resolved } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  /** توهج نيون خفيف (فاتح: ظل بنفسجي أهدى — الغامق: توهج كامل زي المرجع) */
+  const glowSoft = useMemo(
+    () => (resolved === 'light' ? lightShadowGlowSoft : shadowGlowSoft),
+    [resolved],
+  );
   const { t, i18n } = useTranslation();
   const { id: conversationId } = useLocalSearchParams<{ id: string }>();
   const { profile: me } = useAuth();
@@ -121,6 +127,9 @@ export default function ChatScreen() {
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [quickEmoji, setQuickEmoji] = useState('❤️');
   const [loadedIds, setLoadedIds] = useState<Record<string, boolean>>({});
+  /** الرسالة المتظللة بعد النطّ ليها من اقتباس (وميض ذهبي ~1.6 ثانية) */
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textRef = useRef('');
   const draftLoadedRef = useRef(false);
   /** مؤقت تأجيل حفظ المسودة — المسودة بتتحفظ بعد 500ms من التوقف عن
@@ -815,6 +824,41 @@ export default function ChatScreen() {
     [pending, messages],
   );
 
+  /** النطّ للرسالة الأصلية لما تدوس على اقتباس (زي واتساب) + وميض ذهبي.
+   *  لو الأصلية أقدم من آخر ١٠٠ رسالة محمّلة، بنحمّل دفعات أقدم الأول
+   *  (٣ دفعات كحد أقصى) وبعدين ننطّ عليها. */
+  const jumpToMessage = useCallback(
+    async (id: string) => {
+      // تجمّع محلي بنفس ترتيب listData (المعلّقة أولًا ثم الرسايل الأحدث أولًا)
+      let pool: (Message | OutboxItem)[] = [...pending, ...messages];
+      let idx = pool.findIndex((x) => !('localId' in x) && x.id === id);
+      let tries = 0;
+      while (idx === -1 && tries < 3) {
+        const real = pool.filter((x): x is Message => !('localId' in x));
+        const oldest = real[real.length - 1];
+        if (!oldest || !conversationId) break;
+        const older = await fetchMessagesBefore(conversationId, oldest.created_at);
+        const visible = older.filter((m) => !hiddenIdsRef.current.has(m.id));
+        if (!visible.length) break;
+        pool = [...pool, ...visible];
+        setMessages((prev) => [...prev, ...visible]);
+        idx = pool.findIndex((x) => !('localId' in x) && x.id === id);
+        tries += 1;
+      }
+      if (idx === -1) {
+        appAlert(t('chat.originalNotLoaded'));
+        return;
+      }
+      // استنّا رندر واحد لو حمّلنا دفعات أقدم قبل ما ننطّ
+      if (tries > 0) await new Promise((r) => setTimeout(r, 150));
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+      setHighlightId(id);
+      highlightTimerRef.current = setTimeout(() => setHighlightId(null), 1600);
+      listRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
+    },
+    [pending, messages, conversationId, t],
+  );
+
   /** صف القائمة — ثابت الهوية إلا لما تتغير بياناته (عشان memo الفقاعات
    *  يشتغل: الكتابة بتغيّر النص بس فالفقاعات ما بتترسمش من تاني) */
   const renderItem = useCallback(
@@ -844,6 +888,8 @@ export default function ChatScreen() {
           onGiftPress={handleGiftPress}
           onMediaPress={handleMediaPress}
           onLongPress={onLongPress}
+          onQuotePress={jumpToMessage}
+          highlighted={highlightId === item.id}
           dataSaver={dataSaver}
           forceLoad={!!loadedIds[item.id]}
           onLoadMedia={handleLoadMedia}
@@ -917,6 +963,8 @@ export default function ChatScreen() {
       handleMediaPress,
       handleLoadMedia,
       startReply,
+      jumpToMessage,
+      highlightId,
       dayKey,
       dayLabel,
       styles,
@@ -1271,6 +1319,23 @@ export default function ChatScreen() {
         keyExtractor={(m) => ('localId' in m ? m.localId : m.id)}
         contentContainerStyle={{ padding: spacing.md }}
         renderItem={renderItem}
+        onScrollToIndexFailed={({ index }) => {
+          // من غير getItemLayout النطّ ممكن يفشل للرسايل البعيدة —
+          // نقدّر مكانها الأول وبعدين نعيد النطّ
+          listRef.current?.scrollToOffset({
+            offset: Math.max(0, index * 120),
+            animated: false,
+          });
+          setTimeout(
+            () =>
+              listRef.current?.scrollToIndex({
+                index,
+                animated: true,
+                viewPosition: 0.5,
+              }),
+            150,
+          );
+        }}
       />
 
       {/* شريط الرد (اقتباس) */}
@@ -1398,7 +1463,12 @@ export default function ChatScreen() {
                 />
               </View>
             ) : null}
-            <View style={styles.inputWrap}>
+            {/* زرار + زجاجي دائري (بدل 📎) — نفس وظيفة الإرفاق،
+                بس بالشكل المرجعي؛ بيختفي وقت التسجيل/التحرير */}
+            {phase === 'idle' && !editing ? (
+              <GlassIconButton name="add" size={24} circular onPress={onAttach} />
+            ) : null}
+            <View style={[styles.inputWrap, glowSoft]}>
               {phase === 'recording' ? (
                 <View
                   style={[
@@ -1441,9 +1511,6 @@ export default function ChatScreen() {
                     style={styles.input}
                     multiline
                   />
-                  <TouchableOpacity onPress={onAttach} hitSlop={6}>
-                    <Ionicons name="attach" size={22} color={colors.muted} />
-                  </TouchableOpacity>
                 </>
               )}
             </View>
@@ -1805,6 +1872,8 @@ const MessageBubble = React.memo(function MessageBubble({
   onGiftPress,
   onMediaPress,
   onLongPress,
+  onQuotePress,
+  highlighted,
   dataSaver,
   forceLoad,
   onLoadMedia,
@@ -1819,14 +1888,23 @@ const MessageBubble = React.memo(function MessageBubble({
   onGiftPress?: (gift: GiftInfo) => void;
   onMediaPress: (url: string, kind: 'image' | 'video') => void;
   onLongPress: (m: Message) => void;
+  /** الضغطة على اقتباس الرد — بتنطّ للرسالة الأصلية (زي واتساب) */
+  onQuotePress?: (replyToId: string) => void;
+  /** متظللة بعد النطّ ليها من اقتباس (وميض ذهبي مؤقت) */
+  highlighted?: boolean;
   /** توفير البيانات: الصورة متنزلش تلقائيًا لحد ما المستخدم يدوس عليها */
   dataSaver: boolean;
   /** المستخدم داس "تحميل" على الصورة دي */
   forceLoad: boolean;
   onLoadMedia: (id: string) => void;
 }) {
-  const { colors } = useTheme();
+  const { colors, resolved } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  /** توهج نيون خفيف حوالين الفقاعة (فاتح: ظل بنفسجي أهدى) */
+  const glowSoft = useMemo(
+    () => (resolved === 'light' ? lightShadowGlowSoft : shadowGlowSoft),
+    [resolved],
+  );
   const { t } = useTranslation();
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
 
@@ -1852,16 +1930,26 @@ const MessageBubble = React.memo(function MessageBubble({
 
   return (
     <TouchableOpacity onLongPress={() => onLongPress(m)} activeOpacity={0.85}>
-      <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
+      <View
+        style={[
+          styles.bubble,
+          mine ? styles.bubbleMine : styles.bubbleOther,
+          glowSoft,
+          highlighted ? styles.bubbleHighlight : null,
+        ]}>
         {!m.is_deleted && m.reply_to_id ? (
-          <View style={styles.quote}>
+          <TouchableOpacity
+            style={styles.quote}
+            activeOpacity={0.7}
+            onPress={() => m.reply_to_id && onQuotePress?.(m.reply_to_id)}
+            onLongPress={() => onLongPress(m)}>
             <Text style={styles.quoteName} numberOfLines={1}>
               {replyName ?? ''}
             </Text>
             <Text style={styles.quoteText} numberOfLines={1}>
               {replySnippet ?? ''}
             </Text>
-          </View>
+          </TouchableOpacity>
         ) : null}
         {m.is_deleted ? (
           <Text style={styles.deleted}>🚫 {t('chats.deleted')}</Text>
@@ -2085,9 +2173,9 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: fonts.sizes.xs,
     fontWeight: fonts.weights.bold,
   },
-  replyBarText: { color: colors.muted, fontSize: fonts.sizes.sm, marginTop: 1 },
+  replyBarText: { color: colors.text, fontSize: fonts.sizes.sm, marginTop: 1 },
   quote: {
-    backgroundColor: 'rgba(0,0,0,0.22)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
     borderStartWidth: 3,
     borderStartColor: colors.accent,
     borderRadius: radius.sm,
@@ -2100,25 +2188,31 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: fonts.sizes.xs,
     fontWeight: fonts.weights.bold,
   },
-  quoteText: { color: colors.muted, fontSize: fonts.sizes.xs, marginTop: 1 },
+  quoteText: { color: colors.white, fontSize: fonts.sizes.xs, marginTop: 1 },
   bubble: {
     borderRadius: radius.lg,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  /** المرسلة: بنفسجي هادئ معتم (primaryCalm) — مش شفاف (الشفافية اترفضت) */
+  /** المرسلة: بنفسجي هادئ معتم (primaryCalm) — مش شفاف (الشفافية اترفضت) —
+   *  حد نيون + توهج خفيف زي المرجع (التوهج نفسه بيتحط من الكومبوننت) */
   bubbleMine: {
     backgroundColor: colors.primaryCalm,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
+    borderColor: colors.glassBorderStrong,
     borderBottomEndRadius: 6,
   },
-  /** المستلمة: زجاجية شفافة بحد زجاجي وذيل مدوّر ناعم — نفس لغة التطبيق */
+  /** المستلمة: زجاجية بحد نيون وذيل مدوّر ناعم — نفس لغة التطبيق */
   bubbleOther: {
     backgroundColor: colors.glass,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
+    borderColor: colors.glassBorderStrong,
     borderBottomStartRadius: 6,
+  },
+  /** وميض النطّ للرسالة الأصلية: حد ذهبي سميك مؤقت (باين على الفقاعتين) */
+  bubbleHighlight: {
+    borderWidth: 2,
+    borderColor: colors.gold,
   },
   msgText: { color: colors.text, fontSize: fonts.sizes.md, lineHeight: 22 },
   deleted: { color: colors.faint, fontStyle: 'italic', fontSize: fonts.sizes.sm },
@@ -2168,7 +2262,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     outlineWidth: 0,
     outlineStyle: 'none' as 'solid',
   },
-  /** حقل الكتابة الدائري: زجاجي شفاف بلمسة بنفسجي — نفس لغة التطبيق */
+  /** حقل الكتابة الدائري: زجاجي بحد نيون وتوهج خفيف — زي المرجع */
   inputWrap: {
     flex: 1,
     flexDirection: 'row',
@@ -2176,16 +2270,16 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: spacing.sm,
     backgroundColor: colors.glass,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
+    borderColor: colors.glassBorderStrong,
     borderRadius: radius.full,
     paddingHorizontal: spacing.md,
   },
-  /** فاصل التاريخ في نص الشات */
+  /** فاصل التاريخ في نص الشات — نفس حد النيون لباقي الشاشة */
   datePill: {
     alignSelf: 'center',
     backgroundColor: colors.surfaceLight,
     borderWidth: 1,
-    borderColor: colors.stroke,
+    borderColor: colors.glassBorderStrong,
     borderRadius: radius.full,
     paddingHorizontal: spacing.md,
     paddingVertical: 4,
