@@ -79,6 +79,8 @@ interface GiftInfo {
  *  مش لازم توصل لمكان معين) */
 const REC_CANCEL_DX = -60;
 const REC_LOCK_DY = -60;
+/** مدة الضغطة المطوّلة على زرار الإيموجي قبل ما الشريط يفتح */
+const EMOJI_LONG_PRESS_MS = 500;
 /** ضغطة أقصر من كده بتفتح واجهة التسجيل بالنقرة (مش إرسال ولا إلغاء — زي واتساب) */
 const REC_TAP_MS = 200;
 /** مصفوفة تفاعلات فارغة ثابتة — عشان الـ prop ما يتغيرش مع كل ريندر */
@@ -151,6 +153,16 @@ export default function ChatScreen() {
   const slideIdxRef = useRef(-1);
   /** الصبع اتحرك فعلًا على الشريط ولا مجرد دوسة من غير سحب */
   const slideMovedRef = useRef(false);
+  /** الضغطة الواحدة المتواصلة على زرار الإيموجي (زي فيسبوك): الزرار
+   *  نفسه ماسك الضغطة من أولها لآخرها — بيحس بالضغطة المطوّلة
+   *  وبيتتبع مكان الصبع على الشاشة حتى فوق الشريط */
+  const emojiRowRef = useRef<any>(null);
+  const emojiRowRectRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const emojiLongTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const emojiPressStartRef = useRef<{ x: number; y: number } | null>(null);
+  const emojiSlideRef = useRef(false);
+  const emojiMovedRef = useRef(false);
+  const [emojiPressed, setEmojiPressed] = useState(false);
   const [loadedIds, setLoadedIds] = useState<Record<string, boolean>>({});
   /** الرسالة المتظللة بعد النطّ ليها من اقتباس (وميض ذهبي ~1.6 ثانية) */
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -1137,9 +1149,91 @@ export default function ChatScreen() {
     sendQuickEmoji(quickEmoji);
   };
 
-  /** ضغطة مطوّلة على زرار الإيموجي: بيفتح شريط اختيار الإيموجي */
-  const onEmojiLongPress = () => {
-    setEmojiOpen(true);
+  /** الضغطة الواحدة المتواصلة على زرار الإيموجي (زي فيسبوك): الزرار
+   *  ماسك الضغطة كلها — ضغطة سريعة بتبعت الإيموجي السريع، وضغطة
+   *  مطوّلة بتفتح الشريط في نفس الضغطة والصباع يزحلق لفوق يختار؛
+   *  الرفع على إيموجي بيبعته، والرفع برّه الإيموجي بيلغي */
+  const clearEmojiLongTimer = () => {
+    if (emojiLongTimerRef.current) {
+      clearTimeout(emojiLongTimerRef.current);
+      emojiLongTimerRef.current = null;
+    }
+  };
+
+  const emojiIndexFromPage = (pageX: number, pageY: number) => {
+    const r = emojiRowRectRef.current;
+    if (!r || r.width <= 0) return -1;
+    if (pageY < r.y - 24 || pageY > r.y + r.height + 24) return -1;
+    const idx = Math.floor((pageX - r.x) / (r.width / EMOJI_QUICK.length));
+    return idx >= 0 && idx < EMOJI_QUICK.length ? idx : -1;
+  };
+
+  const onEmojiGrant = (evt: GestureResponderEvent) => {
+    const { pageX, pageY } = evt.nativeEvent;
+    emojiPressStartRef.current = { x: pageX, y: pageY };
+    emojiMovedRef.current = false;
+    emojiSlideRef.current = false;
+    setEmojiPressed(true);
+    clearEmojiLongTimer();
+    emojiLongTimerRef.current = setTimeout(() => {
+      emojiLongTimerRef.current = null;
+      // الضغطة المطوّلة والصباع لسه نازل — الشريط يفتح في نفس الضغطة
+      emojiSlideRef.current = true;
+      setEmojiOpen(true);
+      requestAnimationFrame(() => {
+        emojiRowRef.current?.measureInWindow((x: number, y: number, width: number, height: number) => {
+          emojiRowRectRef.current = { x, y, width, height };
+        });
+      });
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }, EMOJI_LONG_PRESS_MS);
+  };
+
+  const onEmojiMove = (evt: GestureResponderEvent) => {
+    const { pageX, pageY } = evt.nativeEvent;
+    const start = emojiPressStartRef.current;
+    if (start && Math.hypot(pageX - start.x, pageY - start.y) > 12) {
+      emojiMovedRef.current = true;
+      // اتحرك قبل ما الضغطة المطوّلة تكمل — تتلغي
+      if (!emojiSlideRef.current) clearEmojiLongTimer();
+    }
+    if (!emojiSlideRef.current) return;
+    const idx = emojiIndexFromPage(pageX, pageY);
+    if (idx !== slideIdxRef.current) {
+      slideIdxRef.current = idx;
+      slideActive.value = idx;
+      if (idx >= 0) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+  };
+
+  const onEmojiRelease = () => {
+    setEmojiPressed(false);
+    clearEmojiLongTimer();
+    if (emojiSlideRef.current) {
+      // ضغطة مطوّلة + سحب: الرفع على إيموجي بيبعته، برّه الإيموجي بيلغي
+      const idx = slideIdxRef.current;
+      emojiSlideRef.current = false;
+      slideActive.value = -1;
+      slideIdxRef.current = -1;
+      if (idx >= 0) {
+        onPickQuickEmoji(EMOJI_QUICK[idx]);
+      } else {
+        setEmojiOpen(false);
+      }
+      return;
+    }
+    // ضغطة واحدة سريعة من غير حركة — بتبعت الإيموجي السريع فورًا
+    if (!emojiMovedRef.current) onEmojiPress();
+  };
+
+  const onEmojiTerminate = () => {
+    setEmojiPressed(false);
+    clearEmojiLongTimer();
+    // الضغطة اتقطعت (النظام خد اللمس) — إلغاء من غير إرسال
+    if (emojiSlideRef.current) setEmojiOpen(false);
+    emojiSlideRef.current = false;
+    slideActive.value = -1;
+    slideIdxRef.current = -1;
   };
 
   /** اختيار إيموجي من الشريط: بيتبعت فورًا وبيبقى الإيموجي السريع الجديد
@@ -1202,6 +1296,8 @@ export default function ChatScreen() {
   const onSlideTerminate = () => {
     slideActive.value = -1;
     slideIdxRef.current = -1;
+    // السحب على الشريط اتقطع — إلغاء من غير إرسال
+    setEmojiOpen(false);
   };
 
   /** بدء تحرير رسالة نصية خاصة بي (خلال 15 دقيقة من الإرسال) */
@@ -1595,6 +1691,7 @@ export default function ChatScreen() {
           ) : null}
           {emojiOpen ? (
             <View
+              ref={emojiRowRef}
               style={styles.emojiRowBar}
               onLayout={(e) => {
                 slideRowWRef.current = e.nativeEvent.layout.width;
@@ -1699,9 +1796,18 @@ export default function ChatScreen() {
                 </View>
               ) : (
                 <>
-                  <TouchableOpacity onPress={onEmojiPress} onLongPress={onEmojiLongPress}>
-                    <Text style={{ fontSize: 22 }}>{quickEmoji}</Text>
-                  </TouchableOpacity>
+                  <View
+                    onStartShouldSetResponder={() => true}
+                    onMoveShouldSetResponder={() => true}
+                    onResponderGrant={onEmojiGrant}
+                    onResponderMove={onEmojiMove}
+                    onResponderRelease={onEmojiRelease}
+                    onResponderTerminate={onEmojiTerminate}
+                    style={{ padding: 4, margin: -4 }}>
+                    <View style={{ transform: [{ scale: emojiPressed ? 1.15 : 1 }] }}>
+                      <Text style={{ fontSize: 22 }}>{quickEmoji}</Text>
+                    </View>
+                  </View>
                   <TextInput
                     ref={inputRef}
                     value={editing ? editText : text}
