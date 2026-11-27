@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   FlatList,
   StyleSheet,
@@ -9,8 +9,8 @@ import {
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
-import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import Swipeable, { SwipeDirection, type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
+import Animated, { useAnimatedReaction, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
 import { Avatar } from '../../components/Avatar';
 import { Screen } from '../../components/ui';
@@ -45,43 +45,79 @@ interface ChatRow {
   muted: boolean;
 }
 
+/** عرض زر إجراء السحب الواحد — لازم يطابق styles.actionBtn */
+const ACTION_WIDTH = 84;
 /**
- * أزرار السحب (حذف/حظر) — ظهورها مربوط بتقدّم السحب (progress):
- * مخفية تمامًا عند الراحة (progress = 0) فلا تبان من خلال الصف ولا على
- * الجنبين، وتظهر بالتدريج مع انزلاق الصف؛ والجنب غير النشط يفضل مخفي
- * فلا يتداخل مع نص الصف. زر الحذف نفسه شفاف شوية (dangerSoft) زي
- * الأصل — الشفافية على الزر مش على الصف (الصف معتم تمامًا).
+ * السحب الكامل = السحب وصل لحوالي عرض الزر كله (85%). أقل من كده سحب
+ * قصير: الصف يفضل مفتوح والزرار باين، والتنفيذ بيكون بالدوسة عليه.
  */
-function SwipeActions({
+const FULL_SWIPE_THRESHOLD = ACTION_WIDTH * 0.85;
+
+type SwipeRowHandle = {
+  peakDrag: SharedValue<number>;
+  methods: SwipeableMethods;
+};
+
+/**
+ * زر سحب واحد — ظهوره مربوط بتقدّم السحب (progress): مخفي تمامًا عند
+ * الراحة (progress = 0) فلا يبان من خلال الصف ولا على الجنبين، ويظهر
+ * بالتدريج مع انزلاق الصف. ويسجّل أقصى مسافة سحب في peakDrag عشان
+ * نميّز السحب الكامل عن السحب القصير عند الإفلات. زر الحذف نفسه شفاف
+ * شوية (dangerSoft) زي الأصل — الشفافية على الزر مش على الصف.
+ *
+ * اتجاهات السحب (مطابقة للسلوك الحي + مصدر المكتبة): السحب يمين يكشف
+ * أزرار الشمال، والسحب شمال يكشف أزرار اليمين — فزرار الحظر على
+ * الشمال (renderLeftActions) وزرار الحذف على اليمين (renderRightActions).
+ */
+function SwipeAction({
   progress,
+  dragX,
+  methods,
+  kind,
   item,
   styles,
   colors,
-  onHide,
-  onBlock,
+  onPress,
+  handles,
 }: {
   progress: SharedValue<number>;
+  dragX: SharedValue<number>;
+  methods: SwipeableMethods;
+  kind: 'hide' | 'block';
   item: ChatRow;
   styles: ReturnType<typeof makeStyles>;
   colors: ThemeColors;
-  onHide: (item: ChatRow) => void;
-  onBlock: (item: ChatRow) => void;
+  onPress: (item: ChatRow) => void;
+  handles: { current: Map<string, SwipeRowHandle> };
 }) {
   const { t } = useTranslation();
+  const peakDrag = useSharedValue(0);
   const fade = useAnimatedStyle(() => ({ opacity: progress.value }));
+  useAnimatedReaction(
+    () => Math.abs(dragX.value),
+    (abs) => {
+      if (abs > peakDrag.value) peakDrag.value = abs;
+    },
+  );
+  useEffect(() => {
+    const map = handles.current;
+    map.set(item.conversationId, { peakDrag, methods });
+    return () => {
+      if (map.get(item.conversationId)?.peakDrag === peakDrag) {
+        map.delete(item.conversationId);
+      }
+    };
+  }, [handles, item.conversationId, methods, peakDrag]);
+  const isHide = kind === 'hide';
   return (
     <Animated.View style={[styles.actions, fade]}>
       <TouchableOpacity
-        style={[styles.actionBtn, { backgroundColor: colors.dangerSoft }]}
-        onPress={() => onHide(item)}>
-        <Text style={styles.actionIcon}>🗑</Text>
-        <Text style={styles.actionLabel}>{t('chats.hide')}</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.actionBtn, { backgroundColor: colors.primary }]}
-        onPress={() => onBlock(item)}>
-        <Text style={styles.actionIcon}>🚫</Text>
-        <Text style={styles.actionLabel}>{t('userProfile.block')}</Text>
+        style={[styles.actionBtn, { backgroundColor: isHide ? colors.dangerSoft : colors.primary }]}
+        onPress={() => onPress(item)}>
+        <Text style={styles.actionIcon}>{isHide ? '🗑' : '🚫'}</Text>
+        <Text style={styles.actionLabel}>
+          {isHide ? t('chats.hide') : t('userProfile.block')}
+        </Text>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -94,6 +130,11 @@ export default function Chats() {
   const { profile: me } = useAuth();
   const [rows, setRows] = useState<ChatRow[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  // حالة السحب لكل صف: أقصى مسافة سحب + أدوات التحكم في الصف (للإغلاق)
+  // وعلامة إن نافذة تأكيد معروضة + إن السحب بدأ من صف مقفول.
+  const swipeHandles = useRef(new Map<string, SwipeRowHandle>());
+  const confirmShown = useRef(new Map<string, boolean>());
+  const openedFromClosed = useRef(new Map<string, boolean>());
 
   const previewFor = useCallback(
     (m: Awaited<ReturnType<typeof fetchLastMessage>>): string => {
@@ -175,13 +216,24 @@ export default function Chats() {
   const removeRow = (conversationId: string) =>
     setRows((prev) => prev.filter((r) => r.conversationId !== conversationId));
 
-  const onHide = (item: ChatRow) => {
+  const onHide = (
+    item: ChatRow,
+    opts?: { onCancel?: () => void; onDone?: () => void },
+  ) => {
     appAlert(t('chats.hide'), t('chats.hideConfirm'), [
-      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('common.cancel'),
+        style: 'cancel',
+        onPress: () => {
+          opts?.onDone?.();
+          opts?.onCancel?.();
+        },
+      },
       {
         text: t('common.delete'),
         style: 'destructive',
         onPress: async () => {
+          opts?.onDone?.();
           if (await hideConversation(item.conversationId)) {
             removeRow(item.conversationId);
           }
@@ -190,14 +242,25 @@ export default function Chats() {
     ]);
   };
 
-  const onBlock = (item: ChatRow) => {
+  const onBlock = (
+    item: ChatRow,
+    opts?: { onCancel?: () => void; onDone?: () => void },
+  ) => {
     if (!me || !item.other) return;
     appAlert(t('userProfile.block'), item.other.shown_name, [
-      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('common.cancel'),
+        style: 'cancel',
+        onPress: () => {
+          opts?.onDone?.();
+          opts?.onCancel?.();
+        },
+      },
       {
         text: t('userProfile.block'),
         style: 'destructive',
         onPress: async () => {
+          opts?.onDone?.();
           if (await blockUser(me.id, item.other!.id)) {
             await hideConversation(item.conversationId);
             removeRow(item.conversationId);
@@ -206,6 +269,49 @@ export default function Chats() {
         },
       },
     ]);
+  };
+
+  // بداية سحبة جديدة = حالة جديدة: تصفير أقصى مسافة + إلغاء علامة التأكيد.
+  const resetSwipeGesture = (conversationId: string, fromClosed: boolean) => {
+    const handle = swipeHandles.current.get(conversationId);
+    if (handle) handle.peakDrag.value = 0;
+    confirmShown.current.delete(conversationId);
+    openedFromClosed.current.set(conversationId, fromClosed);
+  };
+
+  const closeRow = (conversationId: string) => {
+    swipeHandles.current.get(conversationId)?.methods.close();
+  };
+
+  const handleSwipeClose = (item: ChatRow) => {
+    confirmShown.current.delete(item.conversationId);
+    openedFromClosed.current.set(item.conversationId, false);
+    const handle = swipeHandles.current.get(item.conversationId);
+    if (handle) handle.peakDrag.value = 0;
+  };
+
+  /**
+   * عند الإفلات بعد سحب كامل (من صف مقفول) نسأل نافذة التأكيد المعتادة
+   * قبل التنفيذ — مفيش تنفيذ من غير تأكيد. السحب القصير بيفتح الصف بس
+   * والتنفيذ بيكون بالدوسة على الزرار. اتجاه RIGHT = السحب يمين = الحظر،
+   * وLEFT = السحب شمال = الحذف (حسب مصدر المكتبة والسلوك الحي).
+   * ملحوظة: السحب من صف مفتوح أصلًا مبيطلعش نافذة — المسافة المقاسة
+   * وقتها بتبدأ من وضع الصف المفتوح فمش مقياس للسحبة الجديدة؛ في الحالة
+   * دي الدوسة على الزرار هي طريق التنفيذ.
+   */
+  const handleSwipeWillOpen = (item: ChatRow, direction: SwipeDirection) => {
+    if (!openedFromClosed.current.get(item.conversationId)) return;
+    if (confirmShown.current.get(item.conversationId)) return;
+    const peak = swipeHandles.current.get(item.conversationId)?.peakDrag.value ?? 0;
+    if (peak < FULL_SWIPE_THRESHOLD) return;
+    confirmShown.current.set(item.conversationId, true);
+    const clearFlag = () => confirmShown.current.delete(item.conversationId);
+    const cancel = () => closeRow(item.conversationId);
+    if (direction === SwipeDirection.RIGHT) {
+      onBlock(item, { onCancel: cancel, onDone: clearFlag });
+    } else {
+      onHide(item, { onCancel: cancel, onDone: clearFlag });
+    }
   };
 
   const onToggleFlag = async (
@@ -260,24 +366,34 @@ export default function Chats() {
             rightThreshold={40}
             overshootLeft={false}
             overshootRight={false}
-            renderLeftActions={(progress) => (
-              <SwipeActions
+            onSwipeableOpenStartDrag={() => resetSwipeGesture(item.conversationId, true)}
+            onSwipeableCloseStartDrag={() => resetSwipeGesture(item.conversationId, false)}
+            onSwipeableWillOpen={(direction) => handleSwipeWillOpen(item, direction)}
+            onSwipeableClose={() => handleSwipeClose(item)}
+            renderLeftActions={(progress, dragX, methods) => (
+              <SwipeAction
                 progress={progress}
+                dragX={dragX}
+                methods={methods}
+                kind="block"
                 item={item}
                 styles={styles}
                 colors={colors}
-                onHide={onHide}
-                onBlock={onBlock}
+                onPress={onBlock}
+                handles={swipeHandles}
               />
             )}
-            renderRightActions={(progress) => (
-              <SwipeActions
+            renderRightActions={(progress, dragX, methods) => (
+              <SwipeAction
                 progress={progress}
+                dragX={dragX}
+                methods={methods}
+                kind="hide"
                 item={item}
                 styles={styles}
                 colors={colors}
-                onHide={onHide}
-                onBlock={onBlock}
+                onPress={onHide}
+                handles={swipeHandles}
               />
             )}>
       <TouchableOpacity
