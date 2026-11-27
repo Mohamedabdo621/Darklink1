@@ -2439,7 +2439,10 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   headerName: { color: colors.text, fontSize: fonts.sizes.md, fontWeight: fonts.weights.bold },
   statusTyping: { color: colors.accent, fontSize: fonts.sizes.xs, marginTop: 1 },
-  statusOnline: { color: '#4ade80', fontSize: fonts.sizes.xs, marginTop: 1 },
+  /** «متصل الآن» في هيدر الشات — من الثيم مش لون ثابت: أخضر غامق
+   *  في النهار (واضح على الزجاج الفاتح ومريح للعين) وأخضر ساطع
+   *  في الوضع الليلي؛ اللون الفاتح الثابت #4ade80 كان بيبهت في النهار */
+  statusOnline: { color: colors.success, fontSize: fonts.sizes.xs, marginTop: 1 },
   statusSeen: { color: colors.faint, fontSize: fonts.sizes.xs, marginTop: 1 },
   /** شارة التفاعل العائمة: دايرة غامقة صغيرة فوق زاوية الفقاعة السفلية
    *  (جوّه حدود الفقاعة عشان Swipeable بيقصّ اللي برّه) */
