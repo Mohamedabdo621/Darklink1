@@ -12,6 +12,8 @@ import {
   useAudioRecorderState,
 } from 'expo-audio';
 import * as ImagePicker from 'expo-image-picker';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as Haptics from 'expo-haptics';
@@ -81,6 +83,8 @@ const REC_LOCK_DY = -28;
 const REC_TAP_MS = 200;
 /** مصفوفة تفاعلات فارغة ثابتة — عشان الـ prop ما يتغيرش مع كل ريندر */
 const EMPTY_REACTIONS: { emoji: string; count: number; mine: boolean }[] = [];
+/** تدرج الفقاعة المرسلة (زي الصورة المرجعية): بنفسجي → فوشيا */
+const SENT_GRADIENT = ['#7c3aed', '#a855f7', '#d946ef'] as const;
 
 export default function ChatScreen() {
   const { colors, resolved } = useTheme();
@@ -97,6 +101,8 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [other, setOther] = useState<PublicProfile | null>(null);
   const [otherAvatar, setOtherAvatar] = useState<string | null>(null);
+  /** شريط الإرفاق الزجاجي (صورة/كاميرا/هدية) — بيتفتح من زرار + */
+  const [attachOpen, setAttachOpen] = useState(false);
   const [otherId, setOtherId] = useState<string | null>(null);
   const [giftMap, setGiftMap] = useState<Record<string, GiftInfo>>({});
   const [animGift, setAnimGift] = useState<{ nameKey: string; title: string } | null>(null);
@@ -880,6 +886,8 @@ export default function ChatScreen() {
         <MessageBubble
           m={item}
           mine={mine}
+          avatarUri={!mine ? otherAvatar : undefined}
+          avatarName={!mine ? (other?.shown_name ?? undefined) : undefined}
           gift={item.gift_send_id ? giftMap[item.gift_send_id] : undefined}
           replyName={item.reply_preview ? nameFor(item.reply_preview.sender_id) : undefined}
           replySnippet={item.reply_preview ? snippetFor(item.reply_preview) : undefined}
@@ -967,6 +975,8 @@ export default function ChatScreen() {
       highlightId,
       dayKey,
       dayLabel,
+      otherAvatar,
+      other,
       styles,
     ],
   );
@@ -1060,6 +1070,7 @@ export default function ChatScreen() {
   };
 
   const onSendText = () => {
+    setAttachOpen(false);
     void sendTextBody(text, true);
   };
 
@@ -1174,9 +1185,24 @@ export default function ChatScreen() {
   };
 
   const onAttach = async () => {
+    setAttachOpen(false);
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) return;
     const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images', 'videos'],
+      quality: 0.85,
+    });
+    if (res.canceled || !res.assets[0]) return;
+    const asset = res.assets[0];
+    await sendPickedMedia(asset, asset.type === 'video');
+  };
+
+  /** الكاميرا — من نفس مكتبة الصور (مش مكتبة جديدة) */
+  const onCamera = async () => {
+    setAttachOpen(false);
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) return;
+    const res = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images', 'videos'],
       quality: 0.85,
     });
@@ -1267,9 +1293,24 @@ export default function ChatScreen() {
 
   return (
     <View style={styles.root}>
-      {/* الترويسة — مسافة الأمان الحقيقية بتاعة الجهاز (مش رقم ثابت)،
-          وخلفية الهيدر بتملى المساحة دي فمفيش فراغ فوقه */}
-      <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
+      {/* خلفية الشات: صورة أليكس نفسها (غامق/فاتح حسب الوضع) — ثابتة ورا كل حاجة */}
+      <Image
+        source={
+          resolved === 'light'
+            ? require('../../assets/chat-bg-light.jpg')
+            : require('../../assets/chat-bg-dark.jpg')
+        }
+        style={StyleSheet.absoluteFill}
+        resizeMode="cover"
+      />
+      {/* الترويسة — شريط زجاجي عائم زي الصورة المرجعية؛
+          مسافة الأمان الحقيقية بتاعة الجهاز (مش رقم ثابت) */}
+      <View style={[styles.header, { marginTop: insets.top + spacing.sm }]}>
+        <BlurView
+          intensity={resolved === 'light' ? 20 : 32}
+          tint={resolved === 'light' ? 'light' : 'dark'}
+          style={[StyleSheet.absoluteFill, { borderRadius: radius.full }]}
+        />
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color={colors.text} />
         </TouchableOpacity>
@@ -1300,14 +1341,18 @@ export default function ChatScreen() {
         <GlassIconButton
           name="gift-outline"
           size={20}
+          circular
           onPress={() =>
             otherId &&
             router.push({ pathname: '/gift-picker', params: { userId: otherId } })
           }
         />
-        <TouchableOpacity onPress={() => setMenuOpen(true)} style={styles.menuBtn}>
-          <Ionicons name="ellipsis-vertical" size={22} color={colors.text} />
-        </TouchableOpacity>
+        <GlassIconButton
+          name="ellipsis-vertical"
+          size={22}
+          circular
+          onPress={() => setMenuOpen(true)}
+        />
       </View>
 
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
@@ -1421,6 +1466,40 @@ export default function ChatScreen() {
               ))}
             </View>
           ) : null}
+          {/* شريط الإرفاق الزجاجي (صورة/كاميرا/هدية) — زي الصورة المرجعية؛
+              بيتفتح من + وبيتقفل بعد الاختيار أو الإرسال */}
+          {attachOpen && phase === 'idle' && !editing ? (
+            <View style={styles.attachBar}>
+              <BlurView
+                intensity={resolved === 'light' ? 20 : 32}
+                tint={resolved === 'light' ? 'light' : 'dark'}
+                style={[StyleSheet.absoluteFill, { borderRadius: radius.full }]}
+              />
+              <GlassIconButton
+                name="image-outline"
+                size={22}
+                circular
+                onPress={() => void onAttach()}
+              />
+              <GlassIconButton
+                name="camera-outline"
+                size={22}
+                circular
+                onPress={() => void onCamera()}
+              />
+              <GlassIconButton
+                name="gift-outline"
+                size={22}
+                circular
+                onPress={() => {
+                  setAttachOpen(false);
+                  if (otherId) {
+                    router.push({ pathname: '/gift-picker', params: { userId: otherId } });
+                  }
+                }}
+              />
+            </View>
+          ) : null}
           <View style={styles.composer}>
             {/* أيقونة السلة بتظهر وتكبر كل ما السحب لليسار يقرّب من الإلغاء */}
             {phase === 'recording' && recDrag.dx < -10 ? (
@@ -1466,9 +1545,19 @@ export default function ChatScreen() {
             {/* زرار + زجاجي دائري (بدل 📎) — نفس وظيفة الإرفاق،
                 بس بالشكل المرجعي؛ بيختفي وقت التسجيل/التحرير */}
             {phase === 'idle' && !editing ? (
-              <GlassIconButton name="add" size={24} circular onPress={onAttach} />
+              <GlassIconButton
+                name="add"
+                size={24}
+                circular
+                onPress={() => setAttachOpen((v) => !v)}
+              />
             ) : null}
             <View style={[styles.inputWrap, glowSoft]}>
+              <BlurView
+                intensity={resolved === 'light' ? 20 : 32}
+                tint={resolved === 'light' ? 'light' : 'dark'}
+                style={[StyleSheet.absoluteFill, { borderRadius: radius.full }]}
+              />
               {phase === 'recording' ? (
                 <View
                   style={[
@@ -1864,6 +1953,8 @@ function SwipeReplyArrow({
 const MessageBubble = React.memo(function MessageBubble({
   m,
   mine,
+  avatarUri,
+  avatarName,
   gift,
   replyName,
   replySnippet,
@@ -1880,6 +1971,9 @@ const MessageBubble = React.memo(function MessageBubble({
 }: {
   m: Message;
   mine: boolean;
+  /** أفاتار الطرف التاني — بيظهر جنب الفقاعات المستلمة زي الصورة المرجعية */
+  avatarUri?: string | null;
+  avatarName?: string;
   gift?: GiftInfo;
   replyName?: string;
   replySnippet?: string;
@@ -1928,15 +2022,14 @@ const MessageBubble = React.memo(function MessageBubble({
 
   const time = formatTimeAr(m.created_at);
 
-  return (
-    <TouchableOpacity onLongPress={() => onLongPress(m)} activeOpacity={0.85}>
-      <View
-        style={[
-          styles.bubble,
-          mine ? styles.bubbleMine : styles.bubbleOther,
-          glowSoft,
-          highlighted ? styles.bubbleHighlight : null,
-        ]}>
+  const bubbleStyle: StyleProp<ViewStyle> = [
+    styles.bubble,
+    mine ? styles.bubbleMine : styles.bubbleOther,
+    glowSoft,
+    highlighted ? styles.bubbleHighlight : null,
+  ];
+  const bubbleInner = (
+    <>
         {!m.is_deleted && m.reply_to_id ? (
           <TouchableOpacity
             style={styles.quote}
@@ -2019,6 +2112,23 @@ const MessageBubble = React.memo(function MessageBubble({
             </Text>
           </TouchableOpacity>
         ) : null}
+    </>
+  );
+  return (
+    <TouchableOpacity onLongPress={() => onLongPress(m)} activeOpacity={0.85}>
+      <View style={!mine ? styles.receivedRow : undefined}>
+        {!mine ? <Avatar uri={avatarUri} name={avatarName} size={28} /> : null}
+        {mine ? (
+          <LinearGradient
+            colors={SENT_GRADIENT}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={bubbleStyle}>
+            {bubbleInner}
+          </LinearGradient>
+        ) : (
+          <View style={bubbleStyle}>{bubbleInner}</View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -2044,7 +2154,11 @@ const PendingBubble = React.memo(function PendingBubble({ item }: { item: Outbox
         marginBottom: 10,
         opacity: 0.65,
       }}>
-      <View style={[styles.bubble, styles.bubbleMine]}>
+      <LinearGradient
+        colors={SENT_GRADIENT}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.bubble, styles.bubbleMine]}>
         {isMedia ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Ionicons name="image-outline" size={16} color={colors.white} />
@@ -2066,23 +2180,28 @@ const PendingBubble = React.memo(function PendingBubble({ item }: { item: Outbox
             {t('chat.sending')}
           </Text>
         </View>
-      </View>
+      </LinearGradient>
     </View>
   );
 });
 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
+  /** الترويسة: شريط زجاجي عائم (مش لازق في السقف) زي الصورة المرجعية —
+   *  الـ BlurView جوّاه، والخلفية الشفافة احتياطي لو الـ blur مش متاح */
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
     minHeight: 60,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.stroke,
-    backgroundColor: colors.surface,
+    marginHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.glassBorderStrong,
+    borderRadius: radius.full,
+    backgroundColor: colors.glass,
+    overflow: 'hidden',
   },
   backBtn: { paddingHorizontal: 6, paddingVertical: 2 },
   headerAvatar: { width: 38, height: 38, borderRadius: 19 },
@@ -2162,7 +2281,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.glass,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.stroke,
     borderStartWidth: 3,
@@ -2194,13 +2313,18 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  /** المرسلة: بنفسجي هادئ معتم (primaryCalm) — مش شفاف (الشفافية اترفضت) —
-   *  حد نيون + توهج خفيف زي المرجع (التوهج نفسه بيتحط من الكومبوننت) */
+  /** المرسلة: تدرج بنفسجي → فوشيا (زي الصورة المرجعية) — بيتطبق بـ
+   *  LinearGradient، فمفيش backgroundColor هنا؛ حد نيون + توهج خفيف */
   bubbleMine: {
-    backgroundColor: colors.primaryCalm,
     borderWidth: 1,
     borderColor: colors.glassBorderStrong,
     borderBottomEndRadius: 6,
+  },
+  /** صف الرسالة المستلمة: أفاتار صغير جنب الفقاعة (زي الصورة المرجعية) */
+  receivedRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 6,
   },
   /** المستلمة: زجاجية بحد نيون وذيل مدوّر ناعم — نفس لغة التطبيق */
   bubbleOther: {
@@ -2243,9 +2367,8 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.stroke,
-    backgroundColor: colors.surface,
+    // شفاف عشان خلفية الشات تبان ورا البوكس (زي الصورة المرجعية)
+    backgroundColor: 'transparent',
   },
   input: {
     flex: 1,
@@ -2274,10 +2397,25 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: radius.full,
     paddingHorizontal: spacing.md,
   },
+  /** شريط الإرفاق الزجاجي (صورة/كاميرا/هدية) — زي الصورة المرجعية */
+  attachBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.glassBorderStrong,
+    borderRadius: radius.full,
+    backgroundColor: colors.glass,
+    overflow: 'hidden',
+  },
   /** فاصل التاريخ في نص الشات — نفس حد النيون لباقي الشاشة */
   datePill: {
     alignSelf: 'center',
-    backgroundColor: colors.surfaceLight,
+    backgroundColor: colors.glass,
     borderWidth: 1,
     borderColor: colors.glassBorderStrong,
     borderRadius: radius.full,
@@ -2293,7 +2431,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.glass,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.stroke,
   },
@@ -2317,8 +2455,6 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.stroke,
   },
-  /** زر الـ 3 نقط في الهيدر */
-  menuBtn: { paddingHorizontal: 6, paddingVertical: 2 },
   /** مكان الصورة في وضع توفير البيانات — دوس لتحميلها */
   tapToLoad: {
     width: 210,
