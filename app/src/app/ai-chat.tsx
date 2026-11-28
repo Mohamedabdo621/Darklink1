@@ -5,6 +5,11 @@
 // فقاعات المستخدم: تدرج بنفسجي غامق→فوشيا + نص أبيض (لا فقاعات
 // فاتحة/شفافة — اترفضت مرتين). رسائل المساعد: زجاجية.
 // لا BlurView هنا أصلًا (بيحجب اللمس والنص) — زجاج عادي فقط.
+// ملاحظة الأفاتار: صورة Nova (darklink-ai-avatar.png) موجودة محليًا
+// فقط ولم تُرفع لـ GitHub بعد (ملف ثنائي — يرفع من واجهة GitHub).
+// لذلك الأفاتار حاليًا هو شعار التطبيق icon.png، ويُستبدل بصورة Nova
+// (require('../../assets/darklink-ai-avatar.png')) بعد رفعها —
+// شكل الأفاتار المتحرك مؤجل أصلًا بأمر Alex لبعد البناء.
 // ============================================================
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -336,7 +341,7 @@ export default function AiChat() {
       }
       return (
         <View style={[styles.msgRow, styles.msgRowAi]}>
-          <Image source={require('../assets/darklink-ai-avatar.png')} style={styles.aiMiniAvatar} />
+          <Image source={require('../../assets/icon.png')} style={styles.aiMiniAvatar} />
           <View style={[styles.aiBubble, { flexShrink: 1 }]}>
             <Text style={styles.aiLabel}>Darklink AI</Text>
             <Markdown style={mdStyle}>{item.content}</Markdown>
@@ -368,7 +373,7 @@ export default function AiChat() {
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Image source={require('../assets/darklink-ai-avatar.png')} style={styles.headerAvatar} />
+            <Image source={require('../../assets/icon.png')} style={styles.headerAvatar} />
             <View>
               <Text style={styles.headerTitle}>Darklink AI</Text>
               <Text style={styles.headerStatus}>● {t('ai.online')}</Text>
@@ -432,7 +437,7 @@ export default function AiChat() {
             contentContainerStyle={styles.welcomeWrap}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled">
-            <Image source={require('../assets/darklink-ai-avatar.png')} style={styles.welcomeAvatar} />
+            <Image source={require('../../assets/icon.png')} style={styles.welcomeAvatar} />
             <Text style={styles.welcomeTitle}>{t('ai.welcomeTitle')}</Text>
             <Text style={styles.welcomeBody}>{t('ai.welcomeBody')}</Text>
             <View style={styles.chips}>
@@ -455,7 +460,7 @@ export default function AiChat() {
             ListHeaderComponent={
               thinking ? (
                 <View style={[styles.msgRow, styles.msgRowAi]}>
-                  <Image source={require('../assets/darklink-ai-avatar.png')} style={styles.aiMiniAvatar} />
+                  <Image source={require('../../assets/icon.png')} style={styles.aiMiniAvatar} />
                   <View style={styles.aiBubble}>
                     <ThinkingDots color={colors.primaryBright} />
                   </View>
