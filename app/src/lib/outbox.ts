@@ -4,8 +4,14 @@
 // من غير تكرار (كل رسالة ليها معرّف محلي فريد). الوسائط بتترفع من
 // الملف المحلي لما النت يرجع، فالرسالة مش بتضيع.
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { appAlert } from './dialog';
 import type { Message } from './types';
 import {
+  clearChatSendError,
+  deleteChatFile,
+  getLastChatSendError,
+  isRateLimitError,
+  rateLimitMessage,
   sendMediaMessage,
   sendTextMessage,
   sendVoiceMessage,
@@ -98,9 +104,101 @@ export function onOutboxSent(fn: OutboxSentListener): () => void {
   };
 }
 
+// ---------- إشعار فشل الإرسال النهائي / حد السرعة ----------
+
+type OutboxFailedListener = (item: OutboxItem) => void;
+const failedListeners = new Set<OutboxFailedListener>();
+
+/** مستمع لما عنصر يستنفد محاولاته (3) — عشان شاشة الشات تعرض زر إعادة
+ *  محاولة دائم جنب الرسالة المعلّقة (الحوار نفسه بيطلع من هنا برضه). */
+export function onOutboxFailed(fn: OutboxFailedListener): () => void {
+  failedListeners.add(fn);
+  return () => {
+    failedListeners.delete(fn);
+  };
+}
+
+type OutboxRateLimitedListener = (item: OutboxItem) => void;
+const rateLimitedListeners = new Set<OutboxRateLimitedListener>();
+
+/** مستمع لما الإرسال يترفض من حد السرعة على السيرفر (20/دقيقة أو 300/يوم)
+ *  — عشان شاشة الشات تقدر تعرض الرسالة العربية جوّه المحادثة نفسها. */
+export function onOutboxRateLimited(fn: OutboxRateLimitedListener): () => void {
+  rateLimitedListeners.add(fn);
+  return () => {
+    rateLimitedListeners.delete(fn);
+  };
+}
+
+/** إعادة محاولة عنصر معلّق يدويًا (بتصفّر عداد المحاولات وبتبعت القائمة). */
+export async function retryOutboxItem(localId: string): Promise<void> {
+  const items = await loadOutbox();
+  await saveOutbox(
+    items.map((i) => (i.localId === localId ? { ...i, attempts: 0 } : i)),
+  );
+  rateLimitNotified = false;
+  await flushOutbox();
+}
+
+function describeItem(item: OutboxItem): string {
+  switch (item.type) {
+    case 'text':
+      return item.body ? `«${item.body.slice(0, 40)}»` : 'رسالة نصية';
+    case 'image':
+      return 'صورة';
+    case 'video':
+      return 'فيديو';
+    case 'voice':
+      return 'رسالة صوتية';
+  }
+}
+
+/** عنصر استنفد 3 محاولات: بيفضل في القائمة (مش حذف صامت) والمستخدم
+ *  بيتنبّه مع عرض إعادة المحاولة أو الحذف. */
+function notifyFailed(item: OutboxItem): void {
+  failedListeners.forEach((fn) => fn(item));
+  appAlert('تعذّر إرسال رسالة', `الرسالة دي متحفظتش بعد 3 محاولات (${describeItem(item)}) — هتفضل محفوظة لحد ما تختار.`, [
+    {
+      text: 'إعادة المحاولة',
+      onPress: () => void retryOutboxItem(item.localId),
+    },
+    {
+      text: 'حذف الرسالة',
+      style: 'destructive',
+      onPress: () => void removeOutbox(item.localId),
+    },
+    { text: 'لاحقًا', style: 'cancel' },
+  ]);
+}
+
+/** اتنبّهنا عن حد السرعة في الحلقة دي ولا لسه — بيتفك لما إرسال ينجح
+ *  أو المستخدم يعيد المحاولة يدويًا، عشان التنبيه يطلع مرة لكل واقعة. */
+let rateLimitNotified = false;
+
+function notifyRateLimited(item: OutboxItem): void {
+  rateLimitedListeners.forEach((fn) => fn(item));
+  if (rateLimitNotified) return;
+  rateLimitNotified = true;
+  appAlert(
+    'بتبعت بسرعة كبيرة',
+    rateLimitMessage(getLastChatSendError()) ??
+      'بتبعت بسرعة كبيرة — استنى شوية وحاول تاني',
+    [
+      {
+        text: 'حاول تاني',
+        onPress: () => void retryOutboxItem(item.localId),
+      },
+      { text: 'لاحقًا', style: 'cancel' },
+    ],
+  );
+}
+
 // ---------- إرسال عنصر واحد ----------
 
 async function sendOutboxItem(item: OutboxItem): Promise<Message | null> {
+  // صفّر خطأ الإرسال قبل المحاولة — عشان فشل الرفع (من غير إدخال)
+  // ميتفسّرش غلط على إنه حد سرعة من محاولة سابقة.
+  clearChatSendError();
   switch (item.type) {
     case 'text':
       return sendTextMessage(
@@ -121,13 +219,17 @@ async function sendOutboxItem(item: OutboxItem): Promise<Message | null> {
         item.contentType ?? 'image/jpeg',
       );
       if (!path) return null;
-      return sendMediaMessage(
+      const msg = await sendMediaMessage(
         item.conversationId,
         item.senderId,
         item.type,
         path,
         item.replyToId,
       );
+      // الرفع نجح بس الإدخال فشل — امسح الملف من التخزين (يتيم)،
+      // والملف المحلي بيفضل في القائمة عشان إعادة المحاولة ترفعه تاني.
+      if (!msg) await deleteChatFile(item.bucket, path);
+      return msg;
     }
     case 'voice': {
       if (!item.localUri) return null;
@@ -140,27 +242,34 @@ async function sendOutboxItem(item: OutboxItem): Promise<Message | null> {
         'audio/mp4',
       );
       if (!path) return null;
-      return sendVoiceMessage(
+      const msg = await sendVoiceMessage(
         item.conversationId,
         item.senderId,
         path,
         item.durationSec ?? 0,
         item.replyToId,
       );
+      if (!msg) await deleteChatFile('voice-notes', path);
+      return msg;
     }
   }
 }
 
 let flushing = false;
 
-/** يبعت كل عناصر القائمة بنفس الترتيب. عند أول فشل يوقف (عشان الترتيب
- *  يفضل)، وبعد 3 محاولات فاشلة للعنصر بيتشال عشان ميوقفش القائمة للأبد. */
+/** يبعت كل عناصر القائمة بنفس الترتيب. عند أول فشل (شبكة) يوقف (عشان
+ *  الترتيب يفضل). العنصر اللي يستنفد 3 محاولات بيفضل في القائمة
+ *  (مش حذف صامت) والمستخدم بيتنبّه مع عرض إعادة المحاولة — والعناصر
+ *  اللي بعده بتكمل عشان القائمة متقفش للأبد. حد السرعة (20/دقيقة أو
+ *  300/يوم) مش بيستهلك محاولة: الإرسال بيوقف والتنبيه بيطلع مرة. */
 export async function flushOutbox(): Promise<void> {
   if (flushing) return;
   flushing = true;
   try {
     const items = (await loadOutbox()).sort((a, b) => a.createdAt - b.createdAt);
     for (const item of items) {
+      // مركون بعد استنفاد المحاولات — اتنبّه عنه قبل كده، مستني المستخدم
+      if (item.attempts >= MAX_ATTEMPTS) continue;
       let msg: Message | null = null;
       try {
         msg = await sendOutboxItem(item);
@@ -168,18 +277,30 @@ export async function flushOutbox(): Promise<void> {
         msg = null;
       }
       if (!msg) {
+        // حد السرعة: مش فشل شبكة — لا محاولة بتتحسب ولا القائمة بتتقدم،
+        // والرسالة بتفضل في مكانها لحد ما المستخدم يعيد المحاولة.
+        if (isRateLimitError(getLastChatSendError())) {
+          notifyRateLimited(item);
+          break;
+        }
         const next = item.attempts + 1;
+        const all = await loadOutbox();
         if (next >= MAX_ATTEMPTS) {
-          await removeOutbox(item.localId);
+          await saveOutbox(
+            all.map((i) =>
+              i.localId === item.localId ? { ...i, attempts: MAX_ATTEMPTS } : i,
+            ),
+          );
+          notifyFailed(item);
           continue;
         }
-        const all = await loadOutbox();
         await saveOutbox(
           all.map((i) => (i.localId === item.localId ? { ...i, attempts: next } : i)),
         );
         break;
       }
       await removeOutbox(item.localId);
+      rateLimitNotified = false;
       listeners.forEach((fn) => fn(msg as Message, item.localId));
     }
   } finally {

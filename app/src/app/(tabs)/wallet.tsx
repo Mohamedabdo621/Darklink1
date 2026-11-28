@@ -1,6 +1,7 @@
 import React, { useCallback, useState, useMemo } from 'react';
 import {
   FlatList,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -10,6 +11,7 @@ import {
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { GlowCard, Screen } from '../../components/ui';
+import { Skeleton, SkeletonChatRow } from '../../components/Skeleton';
 import { GlassIconChip, type GlassIconName } from '../../components/GlassIconButton';
 import { TabSwipe } from '../../components/TabSwipe';
 import { useAuth } from '../../contexts/AuthContext';
@@ -48,11 +50,13 @@ export default function WalletTab() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { profile: me } = useAuth();
-  const [balance, setBalance] = useState(0);
+  /** الرصيد null لحد ما يتحمل — 0 قبل التحميل كانت بتتعرض كرصيد حقيقي */
+  const [balance, setBalance] = useState<number | null>(null);
   const [txs, setTxs] = useState<Transaction[]>([]);
   const [page, setPage] = useState(0);
   const [ended, setEnded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [firstLoaded, setFirstLoaded] = useState(false);
 
   const load = useCallback(
     async (p: number, replace: boolean) => {
@@ -65,6 +69,7 @@ export default function WalletTab() {
       setEnded(rows.length < 30);
       setTxs((prev) => (replace ? rows : [...prev, ...rows]));
       setPage(p);
+      setFirstLoaded(true);
     },
     [me],
   );
@@ -111,12 +116,16 @@ export default function WalletTab() {
           <GlassIconChip name="diamond-outline" size={14} />
           <Text style={{ color: colors.muted }}>{t('wallet.balance')}</Text>
         </View>
-        <Text style={styles.balance}>
-          {balance}{' '}
-          <Text style={{ fontSize: fonts.sizes.md, color: colors.primaryBright }}>
-            {t('common.gems')}
+        {balance === null ? (
+          <Skeleton width="45%" height={34} borderRadius={8} style={{ marginTop: 8 }} />
+        ) : (
+          <Text style={styles.balance}>
+            {balance}{' '}
+            <Text style={{ fontSize: fonts.sizes.md, color: colors.primaryBright }}>
+              {t('common.gems')}
+            </Text>
           </Text>
-        </Text>
+        )}
         <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.md }}>
           <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/store')}>
             <View style={styles.btnContent}>
@@ -163,8 +172,19 @@ export default function WalletTab() {
       </View>
 
       <Text style={styles.section}>{t('wallet.history')}</Text>
+      {!firstLoaded ? (
+        <View style={{ gap: 4, paddingBottom: Platform.OS === 'web' ? 86 : 0 }}>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <SkeletonChatRow key={i} />
+          ))}
+        </View>
+      ) : (
       <FlatList
         data={txs}
+        style={{ flex: 1 }}
+        // مساحة سفلية على الويب بس: الشريط السفلي position:fixed فوق
+        // المحتوى، ومن غيرها آخر المعاملات بتقعد تحته.
+        contentContainerStyle={{ paddingBottom: Platform.OS === 'web' ? 86 : 0 }}
         keyExtractor={(tx) => tx.id}
         refreshing={refreshing}
         onRefresh={onRefresh}
@@ -184,12 +204,23 @@ export default function WalletTab() {
             ) : (
               <GlassIconChip name={TX_ICON[item.type]} size={18} />
             )}
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, fontSize: fonts.sizes.md }}>
+            {/* minWidth:0 + numberOfLines عشان التاريخ ميتقصّش من اليمين:
+                النص الطويل كان بيطلع برّه حدود الصف وبيتقص. */}
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ color: colors.text, fontSize: fonts.sizes.md }} numberOfLines={1}>
                 {t(TX_KEY[item.type])}
               </Text>
-              <Text style={{ color: colors.faint, fontSize: fonts.sizes.xs }}>
-                {new Date(item.created_at).toLocaleString()}
+              <Text
+                style={{ color: colors.faint, fontSize: fonts.sizes.xs }}
+                numberOfLines={1}
+                ellipsizeMode="tail">
+                {new Date(item.created_at).toLocaleString(undefined, {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
                 {item.status === 'sandbox_verified' ? ` • ${t('wallet.sandboxBadge')}` : ''}
               </Text>
             </View>
@@ -198,6 +229,7 @@ export default function WalletTab() {
                 color: item.amount >= 0 ? colors.success : colors.danger,
                 fontWeight: '700',
                 fontSize: fonts.sizes.md,
+                flexShrink: 0,
               }}>
               {item.amount >= 0 ? '+' : ''}
               {item.amount} 💎
@@ -205,6 +237,7 @@ export default function WalletTab() {
           </View>
         )}
       />
+      )}
     </Screen>
     </TabSwipe>
   );

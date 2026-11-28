@@ -5,7 +5,6 @@
         "backgroundColor": "#07010d",
         "foregroundImage": "./assets/android-icon-foreground.png"
       },
-      "edgeToEdgeEnabled": true,
       "package": "com.alex.darklink",
       "permissions": [
         "android.permission.RECORD_AUDIO",
@@ -34,7 +33,6 @@
       "supportsTablet": true
     },
     "name": "DARKLINK",
-    "newArchEnabled": false,
     "orientation": "portrait",
     "plugins": [
       "expo-router",
@@ -55,7 +53,9 @@
       "expo-localization",
       "expo-video",
       "expo-notifications",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-font",
+      "expo-asset"
     ],
     "scheme": "darklink",
     "slug": "darklink",
@@ -65,7 +65,7 @@
       "resizeMode": "contain"
     },
     "userInterfaceStyle": "dark",
-    "version": "1.6.0",
+    "version": "1.0.0",
     "web": {
       "favicon": "./assets/favicon.png"
     },

@@ -1,5 +1,7 @@
 import React, { useMemo } from 'react';
 import {
+  Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -7,6 +9,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Paths } from 'expo-file-system';
 import { appAlert, appPrompt } from '../lib/dialog';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -15,6 +19,12 @@ import { GlassIconChip } from '../components/GlassIconButton';
 import { bindReferral } from '../services/economy';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import {
+  loadChatWallpaper,
+  saveChatWallpaper,
+  type ChatWallpaper,
+  type FontSize,
+} from '../contexts/ThemeContext';
 import {
   authenticateBiometric,
   biometricsAvailable,
@@ -32,28 +42,163 @@ import {
   fetchPublicProfile,
   unblockUser,
 } from '../services/social';
-import type { Language } from '../lib/types';
+import type { Language, NotificationType } from '../lib/types';
 import type { ThemeColors, ThemeMode } from '../theme';
 import { fonts, spacing } from '../theme';
+
+/** تفضيلات الإشعارات لكل نوع — محفوظة محليًا (AsyncStorage) من غير
+ *  عمود في القاعدة. القايمة هنا هي أنواع الإشعارات في التطبيق
+ *  (lib/types.ts: NotificationType). ملحوظة: التخزين هنا هو نصف
+ *  الشغل — منع الإرسال نفسه من الخادم / إخفاؤه من المعالج محتاج
+ *  تعديل في services/push.ts (برّه نطاق الملف ده). */
+const NOTIF_PREFS_KEY = 'darklink:notif-prefs';
+const NOTIF_TYPES: { key: NotificationType; label: string; desc: string }[] = [
+  { key: 'new_message', label: 'رسائل جديدة', desc: 'لما حد يبعتلك رسالة' },
+  { key: 'voice_note', label: 'رسائل صوتية', desc: 'فويس نوت جديد' },
+  { key: 'gift_received', label: 'هدايا مستلمة', desc: 'لما حد يبعتلك هدية' },
+  { key: 'purchase_success', label: 'نجاح الشراء', desc: 'تأكيد شراء الجواهر' },
+  { key: 'account', label: 'الحساب', desc: 'إشعارات تخص حسابك' },
+  { key: 'security', label: 'الأمان', desc: 'تنبيهات أمان مهمة' },
+  { key: 'app_update', label: 'تحديثات التطبيق', desc: 'لما ينزل تحديث جديد' },
+];
+
+const WALLPAPER_OPTIONS: { key: ChatWallpaper; label: string }[] = [
+  { key: 'default', label: 'حسب الثيم (افتراضي)' },
+  { key: 'light', label: 'الخلفية الفاتحة' },
+  { key: 'dark', label: 'الخلفية الغامقة' },
+  { key: 'none', label: 'بدون خلفية (لون سادة)' },
+];
+
+const FONT_OPTIONS: { key: FontSize; label: string }[] = [
+  { key: 'small', label: 'صغير' },
+  { key: 'medium', label: 'متوسط' },
+  { key: 'large', label: 'كبير' },
+];
+
+function fmtBytes(n: number | null): string {
+  if (n === null || n === undefined) return '—';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
 
 export default function Settings() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t, i18n } = useTranslation();
   const { signOut, profile } = useAuth();
-  const { mode, setMode } = useTheme();
+  const { mode, setMode, fontSize, setFontSize } = useTheme();
   const [blockedList, setBlockedList] = React.useState<
     { id: string; name: string }[]
   >([]);
   const [lockOn, setLockOn] = React.useState(false);
   const [saverOn, setSaverOn] = React.useState(false);
+  const [wallpaper, setWallpaper] = React.useState<ChatWallpaper>('default');
+  const [notifPrefs, setNotifPrefs] = React.useState<Record<NotificationType, boolean>>(
+    () =>
+      Object.fromEntries(NOTIF_TYPES.map((n) => [n.key, true])) as Record<
+        NotificationType,
+        boolean
+      >,
+  );
+  // التخزين: حجم الكاش (ملفات مؤقتة في Paths.cache) + حجم بيانات
+  // AsyncStorage المحلية (تقدير: طول النصوص × 2 بايت تقريبًا).
+  const [cacheBytes, setCacheBytes] = React.useState<number | null>(null);
+  const [localBytes, setLocalBytes] = React.useState<number | null>(null);
+  const [clearingCache, setClearingCache] = React.useState(false);
+  const [cacheMsg, setCacheMsg] = React.useState('');
+
+  const refreshStorage = async () => {
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      const pairs = await AsyncStorage.multiGet(keys);
+      let total = 0;
+      for (const [, v] of pairs) total += (v ?? '').length * 2;
+      setLocalBytes(total);
+    } catch {
+      setLocalBytes(null);
+    }
+    if (Platform.OS === 'web') {
+      setCacheBytes(null);
+      return;
+    }
+    try {
+      setCacheBytes(Paths.cache.size);
+    } catch {
+      setCacheBytes(null);
+    }
+  };
 
   React.useEffect(() => {
     (async () => {
       setLockOn(await isLockEnabled());
       setSaverOn(await loadDataSaver());
+      setWallpaper(await loadChatWallpaper());
+      try {
+        const raw = await AsyncStorage.getItem(NOTIF_PREFS_KEY);
+        if (raw) {
+          const disabled = JSON.parse(raw) as string[];
+          if (Array.isArray(disabled)) {
+            setNotifPrefs((prev) => {
+              const next = { ...prev };
+              for (const k of disabled) {
+                if (k in next) next[k as NotificationType] = false;
+              }
+              return next;
+            });
+          }
+        }
+      } catch {
+        // تجاهل — الافتراضي: الكل شغال
+      }
+      await refreshStorage();
     })();
   }, []);
+
+  /** مسح الكاش: بيمسح بس محتويات مجلد الكاش بتاع expo-file-system
+   *  (Paths.cache) — نسخ وسائط منزّلة وملفات مؤقتة. مبيقربش من:
+   *  المسودات (darklink:draft:*)، قائمة انتظار الرسايل (outbox)،
+   *  جلسة الدخول، أو أي إعداد (ثيم/لغة/حجم خط/خلفية/إشعارات). */
+  const onClearCache = async () => {
+    if (Platform.OS === 'web') return;
+    setClearingCache(true);
+    setCacheMsg('');
+    let freed = 0;
+    try {
+      const entries = Paths.cache.list();
+      for (const e of entries) {
+        try {
+          freed += e.size ?? 0;
+          e.delete();
+        } catch {
+          // ملف مشغول/متمسح — كمّل
+        }
+      }
+    } catch {
+      // مجلد الكاش نفسه مش متاح
+    }
+    setClearingCache(false);
+    setCacheMsg(`تم مسح الكاش — اتحرر ${fmtBytes(freed)}`);
+    await refreshStorage();
+  };
+
+  const onToggleNotif = async (key: NotificationType, v: boolean) => {
+    const next = { ...notifPrefs, [key]: v };
+    setNotifPrefs(next);
+    try {
+      const disabled = Object.entries(next)
+        .filter(([, on]) => !on)
+        .map(([k]) => k);
+      await AsyncStorage.setItem(NOTIF_PREFS_KEY, JSON.stringify(disabled));
+    } catch {
+      // تجاهل
+    }
+  };
+
+  const onPickWallpaper = async (w: ChatWallpaper) => {
+    setWallpaper(w);
+    await saveChatWallpaper(w);
+  };
 
   /** تفعيل/إيقاف قفل التطبيق — التفعيل يحتاج بصمة مسجلة أو PIN،
    *  والإيقاف يحتاج تأكيد بالبصمة أو الـ PIN الأول. */
@@ -247,24 +392,160 @@ export default function Settings() {
         </GlowCard>
 
         <View style={styles.sectionRow}>
+          <GlassIconChip name="text-outline" size={14} />
+          <Text style={[styles.section, { marginTop: 0, marginBottom: 0 }]}>
+            حجم الخط
+          </Text>
+        </View>
+        <GlowCard>
+          {FONT_OPTIONS.map((f) => (
+            <TouchableOpacity
+              key={f.key}
+              onPress={() => void setFontSize(f.key)}
+              style={styles.row}>
+              <Text style={{ color: colors.text, fontSize: fonts.sizes.md }}>
+                {f.label}
+              </Text>
+              {fontSize === f.key ? <Text style={{ color: colors.accent }}>✓</Text> : null}
+            </TouchableOpacity>
+          ))}
+        </GlowCard>
+
+        <View style={styles.sectionRow}>
+          <GlassIconChip name="image-outline" size={14} />
+          <Text style={[styles.section, { marginTop: 0, marginBottom: 0 }]}>
+            خلفية الشات
+          </Text>
+        </View>
+        <GlowCard>
+          {WALLPAPER_OPTIONS.map((w) => (
+            <TouchableOpacity
+              key={w.key}
+              onPress={() => void onPickWallpaper(w.key)}
+              style={styles.row}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                {w.key === 'light' ? (
+                  <Image
+                    source={require('../assets/chat-bg-light.jpg')}
+                    style={styles.wpThumb}
+                  />
+                ) : w.key === 'dark' ? (
+                  <Image
+                    source={require('../assets/chat-bg-dark.jpg')}
+                    style={styles.wpThumb}
+                  />
+                ) : w.key === 'none' ? (
+                  <View style={[styles.wpThumb, { backgroundColor: colors.surface }]} />
+                ) : (
+                  <View
+                    style={[
+                      styles.wpThumb,
+                      {
+                        backgroundColor:
+                          w.key === 'default'
+                            ? colors.primary
+                            : colors.surface,
+                      },
+                    ]}
+                  />
+                )}
+                <Text style={{ color: colors.text, fontSize: fonts.sizes.md }}>
+                  {w.label}
+                </Text>
+              </View>
+              {wallpaper === w.key ? (
+                <Text style={{ color: colors.accent }}>✓</Text>
+              ) : null}
+            </TouchableOpacity>
+          ))}
+        </GlowCard>
+
+        <View style={styles.sectionRow}>
           <GlassIconChip name="lock-closed-outline" size={14} />
           <Text style={[styles.section, { marginTop: 0, marginBottom: 0 }]}>
             {t('settings.appLock')}
           </Text>
         </View>
+        {/* حشوة أفقية حوالين المفاتيح: المفتاح كان لازق في طرف الكارت
+            وبيتقصّ جزئيًا في الثيمين — الحشوة دي بتسيب مسافة أمان. */}
         <GlowCard>
-          <ToggleRow
-            title={t('settings.appLock')}
-            desc={t('settings.appLockDesc')}
-            value={lockOn}
-            onChange={(v) => void onToggleLock(v)}
+          <View style={styles.toggleWrap}>
+            <ToggleRow
+              title={t('settings.appLock')}
+              desc={t('settings.appLockDesc')}
+              value={lockOn}
+              onChange={(v) => void onToggleLock(v)}
+            />
+          </View>
+          <View style={styles.toggleWrap}>
+            <ToggleRow
+              title={t('settings.dataSaver')}
+              desc={t('settings.dataSaverDesc')}
+              value={saverOn}
+              onChange={(v) => void onToggleSaver(v)}
+            />
+          </View>
+        </GlowCard>
+
+        <View style={styles.sectionRow}>
+          <GlassIconChip name="notifications-outline" size={14} />
+          <Text style={[styles.section, { marginTop: 0, marginBottom: 0 }]}>
+            تفضيلات الإشعارات
+          </Text>
+        </View>
+        <GlowCard>
+          {NOTIF_TYPES.map((n) => (
+            <View key={n.key} style={styles.toggleWrap}>
+              <ToggleRow
+                title={n.label}
+                desc={n.desc}
+                value={notifPrefs[n.key]}
+                onChange={(v) => void onToggleNotif(n.key, v)}
+              />
+            </View>
+          ))}
+        </GlowCard>
+
+        <View style={styles.sectionRow}>
+          <GlassIconChip name="folder-outline" size={14} />
+          <Text style={[styles.section, { marginTop: 0, marginBottom: 0 }]}>
+            التخزين
+          </Text>
+        </View>
+        <GlowCard>
+          <View style={styles.row}>
+            <Text style={{ color: colors.text, fontSize: fonts.sizes.md }}>
+              ملفات مؤقتة (كاش)
+            </Text>
+            <Text style={{ color: colors.muted, fontSize: fonts.sizes.md }}>
+              {Platform.OS === 'web' ? 'المتصفح بيديره' : fmtBytes(cacheBytes)}
+            </Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={{ color: colors.text, fontSize: fonts.sizes.md }}>
+              بيانات محلية (إعدادات + جلسة)
+            </Text>
+            <Text style={{ color: colors.muted, fontSize: fonts.sizes.md }}>
+              {fmtBytes(localBytes)}
+            </Text>
+          </View>
+          <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm, lineHeight: 19 }}>
+            مسح الكاش بيمسح بس الملفات المؤقتة (وسائط منزّلة وملفات شغل
+            مؤقتة) — مش بيمسح المسودات ولا الرسايل اللي مستنية النت ولا
+            جلسة الدخول ولا أي إعداد.
+          </Text>
+          <View style={{ height: spacing.md }} />
+          <NeonButton
+            title={clearingCache ? '...' : 'مسح الكاش'}
+            variant="ghost"
+            disabled={Platform.OS === 'web' || clearingCache}
+            onPress={() => void onClearCache()}
           />
-          <ToggleRow
-            title={t('settings.dataSaver')}
-            desc={t('settings.dataSaverDesc')}
-            value={saverOn}
-            onChange={(v) => void onToggleSaver(v)}
-          />
+          {cacheMsg ? (
+            <Text style={{ color: colors.success, fontSize: fonts.sizes.sm, marginTop: spacing.sm }}>
+              {cacheMsg}
+            </Text>
+          ) : null}
         </GlowCard>
 
         <View style={styles.sectionRow}>
@@ -399,4 +680,8 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.md,
   },
+  /** حشوة أفقية حوالين صفوف المفاتيح (ToggleRow) — بتمنع المفتاح
+   *  من اللزوق في طرف الكارت والقصّ من اليمين في الثيمين. */
+  toggleWrap: { paddingHorizontal: spacing.sm },
+  wpThumb: { width: 34, height: 52, borderRadius: 6 },
 });

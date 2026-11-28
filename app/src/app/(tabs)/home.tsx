@@ -1,10 +1,11 @@
 import React, { useCallback, useState, useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { TabSwipe } from '../../components/TabSwipe';
 import { useTranslation } from 'react-i18next';
 import { Chip, GlowCard, Logo, NeonButton, Screen } from '../../components/ui';
+import { Skeleton } from '../../components/Skeleton';
 import { Avatar } from '../../components/Avatar';
 import { useAuth } from '../../contexts/AuthContext';
 import { appAlert } from '../../lib/dialog';
@@ -43,6 +44,10 @@ export default function Home() {
   const [daily, setDaily] = useState<DailyStatus | null>(null);
   const [claiming, setClaiming] = useState(false);
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
+  /** أول تحميل اكتمل؟ — قبلها مفيش أي رقم/حالة بتتعرض (لا "0 جواهر" ولا
+   *  "استلمت ✓" كاذبة): هياكل بس. بعد أول تحميل البيانات القديمة بتفضل
+   *  ظاهرة لحد ما الجديد ييجي (مفيش وميض هياكل مع كل رجوع للصفحة). */
+  const [firstLoaded, setFirstLoaded] = useState(false);
 
   const load = useCallback(async () => {
     if (!profile) return;
@@ -86,6 +91,7 @@ export default function Home() {
         fresh.map((k) => '• ' + t(`achievements.${k}`)).join('\n'),
       );
     }
+    setFirstLoaded(true);
   }, [profile, t]);
 
   const onClaim = async () => {
@@ -124,7 +130,11 @@ export default function Home() {
             onPress={() => router.push('/notifications')}
             style={styles.bell}>
             <Ionicons name="notifications-outline" size={24} color={colors.text} />
-            {unreadNotifs > 0 ? (
+            {/* الشارة بتظهر بس بعد ما عدد غير المقروء يتحمل فعلًا:
+                قبلها 0 مش معناها "مفيش إشعارات" — معناها "لسه متحملش".
+                والعدد بيتصفّر بجد لما تفتح صفحة الإشعارات (هي اللي بتعلّم
+                الكل كمقروء)، فمقارنة لقطتين قبل/بعد فتحها مش اختلاف ثيم. */}
+            {firstLoaded && unreadNotifs > 0 ? (
               <View style={styles.bellBadge}>
                 <Text style={{ color: colors.white, fontSize: 9, fontWeight: '700' }}>
                   {unreadNotifs}
@@ -135,6 +145,13 @@ export default function Home() {
         </View>
 
         {/* شريط الستوري */}
+        {!firstLoaded ? (
+          <View style={{ flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md }}>
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} width={68} height={68} borderRadius={34} />
+            ))}
+          </View>
+        ) : (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -183,6 +200,7 @@ export default function Home() {
               </TouchableOpacity>
             ))}
         </ScrollView>
+        )}
 
         <GlowCard style={styles.identityCard}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
@@ -216,16 +234,49 @@ export default function Home() {
               {t('home.balance')}
             </Text>
           </View>
-          <Text style={styles.balance}>
-            {wallet?.balance ?? 0}{' '}
-            <Text style={{ fontSize: fonts.sizes.md, color: colors.accent }}>
-              {t('common.gems')}
+          {!firstLoaded ? (
+            <Skeleton width="45%" height={34} borderRadius={8} style={{ marginTop: 8 }} />
+          ) : (
+            <Text style={styles.balance}>
+              {wallet?.balance ?? 0}{' '}
+              <Text style={{ fontSize: fonts.sizes.md, color: colors.accent }}>
+                {t('common.gems')}
+              </Text>
             </Text>
-          </Text>
+          )}
         </GlowCard>
 
-        {/* المكافأة اليومية */}
+        {/* المكافأة اليومية — تحذير: daily بيبدأ null، والنص القديم كان
+            بيعتبر أي قيمة غير claimable = "استلمت ✓"، فأثناء التحميل
+            أو لو الـ RPC فشل كانت البطاقة بتقول "استلمت" من غير ما
+            يتستلم حاجة (ده سبب اختلاف الفاتح/الغامق: لقطة قبل وبعد
+            اكتمال الجلب، مش بيانات مختلفة حسب الثيم — الـ RPC خادمي
+            وملوش أي علاقة بالثيم). دلوقتي: هيكل أثناء التحميل، ولو
+            الجلب فشل بعد التحميل بتظهر "تعذّر التحميل" مع إعادة محاولة،
+            ومفيش حكم "استلمت" إلا لما daily_status يرجع claimable=false. */}
         <GlowCard style={styles.walletCard}>
+          {!firstLoaded ? (
+            <View style={{ gap: 10 }}>
+              <Skeleton width="60%" height={16} borderRadius={8} />
+              <Skeleton width="40%" height={14} borderRadius={7} />
+            </View>
+          ) : daily === null ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+              <Ionicons name="gift-outline" size={30} color={colors.accent} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontSize: fonts.sizes.md, fontWeight: fonts.weights.bold }}>
+                  {t('home.dailyTitle')}
+                </Text>
+                <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm, marginTop: 2 }}>
+                  تعذّر تحميل الحالة — دوس لإعادة المحاولة
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => void load()} hitSlop={8}>
+                <Ionicons name="refresh-outline" size={24} color={colors.primaryBright} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
             <Ionicons name="gift-outline" size={30} color={colors.accent} />
             <View style={{ flex: 1 }}>
@@ -251,6 +302,8 @@ export default function Home() {
               />
             </View>
           ) : null}
+            </>
+          )}
         </GlowCard>
 
         <Text style={styles.sectionTitle}>{t('home.shortcuts')}</Text>
@@ -286,6 +339,9 @@ export default function Home() {
             onPress={() => router.push('/leaderboard')}
           />
         </View>
+        {/* مساحة سفلية على الويب بس: الشريط السفلي position:fixed فوق
+            المحتوى، ومن غيرها آخر العناصر بتقعد تحته. */}
+        <View style={{ height: Platform.OS === 'web' ? 86 : 0 }} />
       </ScrollView>
     </Screen>
     </TabSwipe>

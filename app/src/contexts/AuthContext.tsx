@@ -9,14 +9,17 @@ import React, {
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Profile } from '../lib/types';
-import { fetchMyProfile } from '../services/profile';
+import { fetchMyProfileResult } from '../services/profile';
 import { registerPushToken, unregisterPushToken } from '../services/push';
 
 interface AuthState {
   session: Session | null;
   profile: Profile | null;
   loading: boolean;
-  refreshProfile: () => Promise<void>;
+  /** آخر جلب للملف فشل (شبكة/قاعدة) — غير "مفيش ملف أصلًا" */
+  profileError: boolean;
+  /** بترجع true لو الجلب نجح — عشان المتصل مينتقلش غير بعد نجاح التحديث */
+  refreshProfile: () => Promise<boolean>;
   signOut: () => Promise<void>;
 }
 
@@ -24,7 +27,8 @@ const Ctx = createContext<AuthState>({
   session: null,
   profile: null,
   loading: true,
-  refreshProfile: async () => {},
+  profileError: false,
+  refreshProfile: async () => false,
   signOut: async () => {},
 });
 
@@ -34,15 +38,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileError, setProfileError] = useState(false);
   const userIdRef = useRef<string | null>(null);
 
   const loadProfile = useCallback(async (userId: string | null) => {
     userIdRef.current = userId;
     if (!userId) {
       setProfile(null);
+      setProfileError(false);
       return;
     }
-    const p = await fetchMyProfile(userId);
+    const { profile: p, error } = await fetchMyProfileResult(userId);
+    setProfileError(error);
+    if (error) {
+      setProfile(null);
+      return;
+    }
     if (p?.is_suspended) {
       // حساب موقوف من الإدارة — تسجيل خروج فوري
       await supabase.auth.signOut();
@@ -72,8 +83,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [loadProfile]);
 
-  const refreshProfile = useCallback(async () => {
-    if (userIdRef.current) setProfile(await fetchMyProfile(userIdRef.current));
+  const refreshProfile = useCallback(async (): Promise<boolean> => {
+    if (!userIdRef.current) return false;
+    const { profile: p, error } = await fetchMyProfileResult(userIdRef.current);
+    setProfileError(error);
+    if (error) return false;
+    setProfile(p);
+    return true;
   }, []);
 
   // نبض الحضور: تحديث آخر ظهور دوريًا أثناء استخدام التطبيق
@@ -100,7 +116,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <Ctx.Provider value={{ session, profile, loading, refreshProfile, signOut }}>
+    <Ctx.Provider
+      value={{ session, profile, loading, profileError, refreshProfile, signOut }}>
       {children}
     </Ctx.Provider>
   );

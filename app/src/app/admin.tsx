@@ -40,12 +40,13 @@ import {
   type PromoCode,
 } from '../services/admin';
 import { deletePost } from '../services/timeline';
+import { fetchRecentErrors, type ErrorLogRow } from '../services/errorLog';
 import type { PostReportRow, ReferralRow } from '../lib/types';
 import { fonts, radius, spacing } from '../theme';
 
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme';
-type Section = 'overview' | 'orders' | 'users' | 'reports' | 'referrals' | 'postReports' | 'promos' | 'settings';
+type Section = 'overview' | 'orders' | 'users' | 'reports' | 'referrals' | 'postReports' | 'promos' | 'settings' | 'errors';
 
 const CONFIG_FIELDS: { key: string; labelKey: string; numeric?: boolean }[] = [
   { key: 'vodafone_cash_number', labelKey: 'admin.cfgVodafone' },
@@ -91,6 +92,9 @@ export default function Admin() {
   const [pUses, setPUses] = useState('100');
   // settings
   const [config, setConfig] = useState<Record<string, string>>({});
+  // errors (سجل الأخطاء — قراءة فقط)
+  const [errors, setErrors] = useState<ErrorLogRow[]>([]);
+  const [errorsLoaded, setErrorsLoaded] = useState(false);
 
   const loadSection = useCallback(
     async (s: Section) => {
@@ -113,6 +117,10 @@ export default function Admin() {
       if (s === 'postReports') setPostReports(await fetchAdminPostReports());
       if (s === 'promos') setPromos(await fetchAdminPromos());
       if (s === 'settings') setConfig(await fetchAdminConfig());
+      if (s === 'errors') {
+        setErrors(await fetchRecentErrors(50));
+        setErrorsLoaded(true);
+      }
     },
     [orderStatus, query],
   );
@@ -144,6 +152,7 @@ export default function Admin() {
     { key: 'postReports', label: t('admin.postReports'), icon: 'document-text-outline' },
     { key: 'promos', label: t('admin.promos'), icon: 'ticket-outline' },
     { key: 'settings', label: t('admin.settings'), icon: 'settings-outline' },
+    { key: 'errors', label: 'سجل الأخطاء', icon: 'bug-outline' },
   ];
 
   return (
@@ -581,6 +590,35 @@ export default function Admin() {
                     }}
                   />
                 </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
+        {section === 'errors' ? (
+          <View>
+            {!errorsLoaded ? (
+              <Text style={styles.empty}>…</Text>
+            ) : errors.length === 0 ? (
+              <Text style={styles.empty}>
+                لا توجد أخطاء مسجلة — أو جدول error_logs لسه متعملش
+              </Text>
+            ) : null}
+            {errors.map((e) => (
+              <View key={e.id} style={styles.card}>
+                <Text style={{ color: colors.text, fontWeight: '700' }} numberOfLines={3}>
+                  {e.message}
+                </Text>
+                <Text style={styles.meta}>
+                  {e.route ?? '—'} • {new Date(e.created_at).toLocaleString()}
+                </Text>
+                {e.user_id ? (
+                  <Text style={styles.meta}>user: {e.user_id.slice(0, 8)}…</Text>
+                ) : null}
+                {e.stack ? (
+                  <Text style={styles.meta} numberOfLines={4}>
+                    {e.stack}
+                  </Text>
+                ) : null}
               </View>
             ))}
           </View>

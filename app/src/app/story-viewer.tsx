@@ -39,6 +39,7 @@ import {
 } from '../services/features';
 import { avatarSignedUrl } from '../services/profile';
 import { fetchPublicProfile } from '../services/social';
+import { getOrCreateConversation, sendTextMessage } from '../services/chat';
 import { fonts, gradients, radius, spacing } from '../theme';
 
 import { useTheme } from '../contexts/ThemeContext';
@@ -258,6 +259,25 @@ export default function StoryViewer() {
     }
   };
 
+  /** رد خاص على القصة: نفس النص بيتبعت رسالة خاصة لصاحب القصة
+   *  (زي رد الستوري في إنستجرام) — التعليق العام بيفضل زي ما هو. */
+  const onReplyDM = async () => {
+    if (!current || !me || !commentText.trim()) return;
+    const body = commentText.trim();
+    const convId = await getOrCreateConversation(current.user_id);
+    if (!convId) {
+      appAlert(t('common.error'), t('common.error'));
+      return;
+    }
+    const sent = await sendTextMessage(convId, me.id, `📩 رد على قصتك: ${body}`);
+    if (sent) {
+      setCommentText('');
+      appAlert('✓', 'تم إرسال الرد برسالة خاصة');
+    } else {
+      appAlert(t('common.error'), t('common.error'));
+    }
+  };
+
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       {/* أشرطة التقدم — الحالية بتمتلئ مع الوقت، اللي فاتت ممتلئة، واللي جاية فاضية */}
@@ -392,6 +412,14 @@ export default function StoryViewer() {
                   <Ionicons name="send" size={20} color={colors.white} />
                 </TouchableOpacity>
               </View>
+              {/* رد خاص لصاحب القصة (رسالة خاصة مش تعليق عام) */}
+              <TouchableOpacity
+                style={styles.barBtn}
+                onPress={() => void onReplyDM()}
+                hitSlop={6}>
+                <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.white} />
+                <Text style={styles.barBtnText}>رد</Text>
+              </TouchableOpacity>
             </>
           )}
         </View>

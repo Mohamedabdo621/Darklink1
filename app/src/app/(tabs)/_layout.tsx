@@ -1,5 +1,5 @@
 import React, { forwardRef, useMemo } from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { Redirect } from 'expo-router';
 import { Tabs, TabList, TabTrigger, TabSlot } from 'expo-router/ui';
 import type { TabTriggerSlotProps } from 'expo-router/ui';
@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
+import { NeonButton } from '../../components/ui';
 import { fonts, gradients, radius, spacing } from '../../theme';
 
 import { useTheme } from '../../contexts/ThemeContext';
@@ -65,8 +66,37 @@ export default function TabsLayout() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
-  const { session, profile, loading } = useAuth();
+  const { session, profile, loading, profileError, refreshProfile, signOut } =
+    useAuth();
+  // الجلب فشل (شبكة/قاعدة) — شاشة إعادة محاولة بدل التحويل لصفحة
+  // إكمال البيانات (بتغطي كمان الدخول من لينك تأكيد الإيميل).
+  if (!loading && session && profileError) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.bg,
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 16,
+          paddingHorizontal: 24,
+        }}>
+        <Text
+          style={{ color: colors.text, fontSize: 18, fontWeight: '700', textAlign: 'center' }}>
+          تعذّر تحميل ملفك
+        </Text>
+        <Text style={{ color: colors.muted, fontSize: 14, textAlign: 'center', lineHeight: 20 }}>
+          اتأكد من النت وحاول تاني
+        </Text>
+        <NeonButton title="حاول تاني" onPress={() => void refreshProfile()} />
+        <Pressable onPress={() => void signOut()} style={{ paddingVertical: 12 }}>
+          <Text style={{ color: colors.faint, fontSize: 14 }}>تسجيل خروج</Text>
+        </Pressable>
+      </View>
+    );
+  }
   // ملفه ناقص تاريخ الميلاد → صفحة إكمال البيانات (بتغطي كمان الدخول من لينك تأكيد الإيميل)
+  // — بس لما الجلب يكون نجح (profile موجود من غير birthdate، أو مفيش صف من غير خطأ).
   if (!loading && session && !profile?.birthdate) {
     return <Redirect href="/complete-profile" />;
   }
@@ -105,6 +135,21 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     height: 62,
     paddingBottom: 8,
     paddingTop: 6,
+    // على الويب: الشريط لازم يبقى مثبّت في أسفل الشاشة — من غيره
+    // بيتقص تحت في المحفظة وبيختفي مع السكرول في المتجر (الصفحة
+    // نفسها هي اللي بتسكرول، مش الـ TabSlot). على الموبايل بيفضل
+    // في التدفق الطبيعي زي ما هو.
+    ...(Platform.OS === 'web'
+      ? ({
+          position: 'fixed',
+          left: spacing.md,
+          right: spacing.md,
+          bottom: spacing.sm,
+          marginHorizontal: 0,
+          marginBottom: 0,
+          zIndex: 10,
+        } as unknown as ViewStyle)
+      : {}),
   },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2 },
   label: { fontSize: fonts.sizes.xs, fontWeight: fonts.weights.medium },

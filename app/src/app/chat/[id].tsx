@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { Animated, FlatList, Image, Keyboard, Modal, Platform, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, FlatList, Image, Keyboard, Linking, Modal, Platform, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
@@ -46,9 +46,11 @@ import {
   fetchMessagesBefore,
   fetchReactions,
   fetchReplyPreview,
+  getLastChatSendError,
   hideMessageForMe,
   markConversationRead,
   mediaSignedUrl,
+  rateLimitMessage,
   REACTION_EMOJIS,
   sendMediaMessage,
   sendTextMessage,
@@ -69,6 +71,7 @@ import {
 import { fonts, lightShadowGlowSoft, radius, shadowGlowSoft, spacing } from '../../theme';
 
 import { useTheme } from '../../contexts/ThemeContext';
+import { loadChatWallpaper, type ChatWallpaper } from '../../contexts/ThemeContext';
 import type { ThemeColors } from '../../theme';
 interface GiftInfo {
   name_key: string;
@@ -87,6 +90,89 @@ const REC_TAP_MS = 200;
 const EMPTY_REACTIONS: { emoji: string; count: number; mine: boolean }[] = [];
 /** تدرج الفقاعة المرسلة (زي الصورة المرجعية): بنفسجي → فوشيا */
 const SENT_GRADIENT = ['#7c3aed', '#a855f7', '#d946ef'] as const;
+
+/** معاينة روابط: أول رابط في نص الرسالة — العنوان بيتجلب بمهلة 3 ثواني
+ *  وبيفشل بصمت (مفيش حظر CORS/شبكة يبطّأ الشات)؛ العناوين بتتخزّن
+ *  في خريطة ذاكرة عشان ميتجلبش نفس الرابط مع كل ريندر. */
+const URL_RE = /(https?:\/\/[^\s]+)/i;
+const linkTitleCache = new Map<string, string | null>();
+function extractUrl(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const m = URL_RE.exec(text);
+  return m ? m[1].replace(/[),.;!?]+$/, '') : null;
+}
+function domainOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+function LinkPreview({ url, mine }: { url: string; mine: boolean }) {
+  const { colors } = useTheme();
+  const [title, setTitle] = useState<string | null>(() => linkTitleCache.get(url) ?? null);
+  const [tried, setTried] = useState(linkTitleCache.has(url));
+  useEffect(() => {
+    if (tried) return;
+    let live = true;
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 3000);
+    fetch(url, { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error('bad status'))))
+      .then((html) => {
+        const m = /<title[^>]*>([^<]{1,120})<\/title>/i.exec(html);
+        const t = m ? m[1].replace(/\s+/g, ' ').trim() : null;
+        linkTitleCache.set(url, t);
+        if (live && t) setTitle(t);
+      })
+      .catch(() => {
+        linkTitleCache.set(url, null);
+      })
+      .finally(() => {
+        clearTimeout(to);
+        if (live) setTried(true);
+      });
+    return () => {
+      live = false;
+      clearTimeout(to);
+      ctrl.abort();
+    };
+  }, [url, tried]);
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={() => Linking.openURL(url).catch(() => {})}
+      style={{
+        marginTop: 6,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: mine ? 'rgba(255,255,255,0.4)' : colors.stroke,
+        backgroundColor: mine ? 'rgba(255,255,255,0.16)' : colors.card,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        gap: 2,
+      }}>
+      <Text
+        style={{
+          color: mine ? colors.white : colors.primaryBright,
+          fontSize: fonts.sizes.sm,
+          fontWeight: '700',
+        }}
+        numberOfLines={1}>
+        {domainOf(url)}
+      </Text>
+      <Text
+        style={{
+          color: mine ? 'rgba(255,255,255,0.85)' : colors.text,
+          fontSize: fonts.sizes.sm,
+        }}
+        numberOfLines={2}>
+        {title ?? url}
+      </Text>
+    </TouchableOpacity>
+  );
+}
 
 /** رسالة إيموجي بس (1–3 إيموجي، من غير كلام) — بتتعرض من غير فقاعة زي واتساب */
 function isEmojiOnly(text: string): boolean {
@@ -140,6 +226,8 @@ export default function ChatScreen() {
   const [pending, setPending] = useState<OutboxItem[]>([]);
   const [muted, setMuted] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  /** خلفية الشات المختارة من الإعدادات (افتراضي = حسب الثيم) */
+  const [wallpaper, setWallpaper] = useState<ChatWallpaper>('default');
   const [editing, setEditing] = useState<Message | null>(null);
   const [editText, setEditText] = useState('');
   const [dataSaver, setDataSaver] = useState(false);
@@ -253,6 +341,14 @@ export default function ChatScreen() {
   const recPermRef = useRef<boolean | null>(null);
 
   const failSend = () => appAlert(t('common.error'), t('chat.blockedNotice'));
+
+  /** فشل إرسال مع رسالة حد السرعة لو هي السبب (20 رسالة/دقيقة أو 300/
+   *  يوم — trigger على الخادم) بدل رسالة "خطأ" عامة لا بتقول حاجة. */
+  const failSendRateAware = () => {
+    const rl = rateLimitMessage(getLastChatSendError());
+    if (rl) appAlert('⏳', rl);
+    else failSend();
+  };
 
   /** يربط معاينة الرد بالرسالة المرسلة محليًا ويصفّي حالة الرد */
   const attachReply = (m: Message): Message => {
@@ -371,7 +467,7 @@ export default function ChatScreen() {
       if (m) {
         setMessages((prev) => [attachReply(m), ...prev]);
         setReplyTo(null);
-      } else failSend();
+      } else failSendRateAware();
     }
     setSending(false);
   };
@@ -704,6 +800,13 @@ export default function ChatScreen() {
     load();
   }, [load]);
 
+  // خلفية الشات: بتتقرأ مع كل رجوع للشات عشان اختيار الإعدادات يبان فورًا
+  useFocusEffect(
+    useCallback(() => {
+      loadChatWallpaper().then(setWallpaper);
+    }, []),
+  );
+
   // تحديث دوري لآخر ظهور الطرف الآخر
   useEffect(() => {
     if (!otherId) return;
@@ -772,7 +875,11 @@ export default function ChatScreen() {
                 }
               }
             });
-            if (row.sender_id !== me.id) markConversationRead(conversationId);
+            if (row.sender_id !== me.id) {
+              markConversationRead(conversationId);
+              // ردّ فعلًا: الطرف التاني بطل يكتب
+              setTyping(false);
+            }
             if (row.reply_to_id) {
               fetchReplyPreview(row.reply_to_id).then((p) => {
                 if (p) {
@@ -1144,6 +1251,11 @@ export default function ChatScreen() {
     const m = await sendTextMessage(conversationId, me.id, body, replyId);
     setSending(false);
     if (!m) {
+      // حد سرعة؟ اعرض رسالته للمستخدم (بدل ما الرسالة تتحط في القائمة
+      // من غير ما يعرف هي بتتأخر ليه) — وبتفضل في القائمة وهتتبعت
+      // تلقائيًا لما يعدّي الحد.
+      const rl = rateLimitMessage(getLastChatSendError());
+      if (rl) appAlert('⏳', rl);
       // فشل رغم الاتصال — حطها في القائمة وحاول تاني تلقائيًا
       const item = await enqueueOutbox({
         conversationId,
@@ -1409,7 +1521,7 @@ export default function ChatScreen() {
       if (m) {
         setMessages((prev) => [attachReply(m), ...prev]);
         setReplyTo(null);
-      } else failSend();
+      } else failSendRateAware();
     }
     setSending(false);
   };
@@ -1523,20 +1635,31 @@ export default function ChatScreen() {
     );
   };
 
+  // خلفية الشات حسب اختيار المستخدم (الإعدادات > خلفية الشات):
+  // 'none' = لون الخلفية السادة من غير صورة؛ غير كده صورة 1440×2560
+  const bgSource =
+    wallpaper === 'none'
+      ? null
+      : wallpaper === 'light'
+        ? require('../../assets/chat-bg-light.jpg')
+        : wallpaper === 'dark'
+          ? require('../../assets/chat-bg-dark.jpg')
+          : resolved === 'light'
+            ? require('../../assets/chat-bg-light.jpg')
+            : require('../../assets/chat-bg-dark.jpg');
+
   return (
     <View style={styles.root}>
       {/* خلفية الشات: صورة أليكس نفسها (غامق/فاتح حسب الوضع) — ثابتة ورا كل حاجة.
           العرض/الطول 100% صريحين لأن React Native Web من غيرهم بياخد مقاس
           الصورة الأصلي (941×1672) فبتتقص على الموبايل وبتقف عند نص الشاشة على الديسكتوب */}
-      <Image
-        source={
-          resolved === 'light'
-            ? require('../../assets/chat-bg-light.jpg')
-            : require('../../assets/chat-bg-dark.jpg')
-        }
-        style={[StyleSheet.absoluteFill, { width: '100%', height: '100%' }]}
-        resizeMode="cover"
-      />
+      {bgSource ? (
+        <Image
+          source={bgSource}
+          style={[StyleSheet.absoluteFill, { width: '100%', height: '100%' }]}
+          resizeMode="cover"
+        />
+      ) : null}
       {/* الترويسة — شريط زجاجي عائم زي الصورة المرجعية؛
           مسافة الأمان الحقيقية بتاعة الجهاز (مش رقم ثابت) */}
       <View style={[styles.header, { marginTop: insets.top + spacing.sm }]}>
@@ -1559,6 +1682,7 @@ export default function ChatScreen() {
             <Text style={styles.headerName} numberOfLines={1} ellipsizeMode="tail">
               {other?.shown_name ?? '...'}
               {other?.is_vip ? ' 👑' : ''}
+              {muted ? ' 🔇' : ''}
             </Text>
             {typing ? (
               <Text style={styles.statusTyping}>{t('chat.typing')}</Text>
@@ -2239,7 +2363,7 @@ function SwipeReplyArrow({
   const anim = useAnimatedStyle(() => ({ opacity: progress.value }));
   return (
     <Reanimated.View style={[style, anim]}>
-      <Text style={{ fontSize: 19 }}>{glyph}</Text>
+      <Text style={{ fontSize: 28 }}>{glyph}</Text>
     </Reanimated.View>
   );
 }
@@ -2348,7 +2472,13 @@ const MessageBubble = React.memo(function MessageBubble({
         {m.is_deleted ? (
           <Text style={styles.deleted}>🚫 {t('chats.deleted')}</Text>
         ) : m.type === 'text' ? (
-          <Text style={[styles.msgText, mine && { color: colors.white }]}>{m.body}</Text>
+          <>
+            <Text style={[styles.msgText, mine && { color: colors.white }]}>{m.body}</Text>
+            {(() => {
+              const url = extractUrl(m.body);
+              return url ? <LinkPreview url={url} mine={mine} /> : null;
+            })()}
+          </>
         ) : m.type === 'image' ? (
           dataSaver && !forceLoad ? (
             <TouchableOpacity onPress={() => onLoadMedia(m.id)} style={styles.tapToLoad}>

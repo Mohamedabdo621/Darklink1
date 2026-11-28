@@ -11,6 +11,27 @@ export async function fetchMyProfile(userId: string): Promise<Profile | null> {
   return data as Profile;
 }
 
+/** جلب الملف مع التمييز بين "مفيش صف" و"الجلب فشل" (شبكة/قاعدة).
+ *  PGRST116 = مفيش صف مطابق — مش فشل، فـ error=false.
+ *  أي خطأ تاني = فشل جلب، والمتصل لازم يعرض شاشة إعادة محاولة
+ *  بدل ما يحوّل المستخدم لصفحة إكمال البيانات. */
+export async function fetchMyProfileResult(
+  userId: string,
+): Promise<{ profile: Profile | null; error: boolean }> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .single();
+  if (error) {
+    if ((error as { code?: string }).code === 'PGRST116') {
+      return { profile: null, error: false };
+    }
+    return { profile: null, error: true };
+  }
+  return { profile: data as Profile, error: false };
+}
+
 /** تحديث حقول محددة فقط — تغيير حقل لا يمس أي إعداد خصوصية آخر */
 export async function updateMyProfile(
   userId: string,

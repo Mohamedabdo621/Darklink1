@@ -203,8 +203,44 @@ async function insertMessage(
     .insert({ conversation_id: conversationId, sender_id: senderId, ...fields })
     .select()
     .single();
-  if (error) return null;
+  if (error) {
+    lastSendError = error.message;
+    return null;
+  }
+  lastSendError = null;
   return data as Message;
+}
+
+/** حد سرعة الرسايل على السيرفر (trigger على messages): أكتر من 20 رسالة
+ *  في الدقيقة أو 300 في اليوم — insertMessage() بترجع null والخطأ بيبقى
+ *  `rate_limit_minute: ...` أو `rate_limit_day: ...`. الخطأ بيتسجّل هنا
+ *  عشان المتصل يقراه بعد ما send*Message ترجع null ويميز حد السرعة
+ *  عن فشل الشبكة — بدل فشل صامت أو رسالة "خطأ" عامة. */
+let lastSendError: string | null = null;
+
+/** نص آخر خطأ إرسال (null لو آخر إرسال نجح). */
+export function getLastChatSendError(): string | null {
+  return lastSendError;
+}
+
+/** تصفير آخر خطأ إرسال قبل محاولة جديدة — عشان خطأ قديم من محاولة
+ *  سابقة ميتفسّرش على إنه سبب فشل المحاولة دي. */
+export function clearChatSendError(): void {
+  lastSendError = null;
+}
+
+export function isRateLimitError(err: string | null): boolean {
+  return !!err && err.includes('rate_limit_');
+}
+
+/** رسالة عربية واضحة لحد السرعة (null لو الخطأ مش حد سرعة) — للدقيقة
+ *  رسالة الاستنّاء، ولليوم رسالة بكرا. */
+export function rateLimitMessage(err: string | null): string | null {
+  if (!isRateLimitError(err)) return null;
+  if (err?.includes('rate_limit_day')) {
+    return 'وصلت لحد الرسايل المسموح بيه النهاردة (300) — حاول تاني بكرا';
+  }
+  return 'بتبعت بسرعة كبيرة — استنى شوية وحاول تاني';
 }
 
 export function sendTextMessage(
@@ -230,13 +266,26 @@ export async function uploadChatFile(
   contentType: string,
 ): Promise<string | null> {
   const path = `${conversationId}/${senderId}/${Date.now()}.${ext}`;
-  const res = await fetch(localUri);
-  const blob = await res.blob();
-  const { error } = await supabase.storage
-    .from(bucket)
-    .upload(path, blob, { contentType, upsert: false });
-  if (error) return null;
-  return path;
+  try {
+    const res = await fetch(localUri);
+    const blob = await res.blob();
+    const { error } = await supabase.storage
+      .from(bucket)
+      .upload(path, blob, { contentType, upsert: false });
+    if (error) return null;
+    return path;
+  } catch {
+    return null;
+  }
+}
+
+/** حذف ملف مرفوع من التخزين — لما إدخال الرسالة يفشل بعد نجاح الرفع،
+ *  عشان الملف ميبقاش يتيم في الـ bucket. */
+export async function deleteChatFile(
+  bucket: 'chat-media' | 'voice-notes',
+  path: string,
+): Promise<void> {
+  await supabase.storage.from(bucket).remove([path]);
 }
 
 export function sendMediaMessage(

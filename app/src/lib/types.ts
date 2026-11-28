@@ -48,7 +48,21 @@ export interface PublicProfile {
   last_seen_at?: string | null;
   /** معرف الحساب العام: 14 رقم للعرض (بيوصل من RPC بعد تطبيق هجرة v1.6.0) */
   public_id?: number | null;
+  /** عدد المتابعين — بيوصل من get_public_profile بعد تطبيق هجرة المتابعين */
+  followers_count?: number;
+  /** عدد اللي بيتابعهم — بيوصل من get_public_profile بعد تطبيق هجرة المتابعين */
+  following_count?: number;
+  /** صاحب الملف ده بيتابعني؟ — بيوصل من get_public_profile بعد تطبيق هجرة المتابعين */
+  follows_me?: boolean;
   created_at: string;
+}
+
+/** صف في قائمة المتابعين/المتابَعين — بيرجع من get_followers / get_following */
+export interface FollowUser {
+  user_id: string;
+  shown_name: string;
+  username: string | null;
+  avatar_url: string | null;
 }
 
 export interface Wallet {
@@ -201,6 +215,12 @@ export interface Post {
   likes_count: number;
   comments_count: number;
   liked_by_me: boolean;
+  /** عدد مرات إعادة النشر — بيوصل من get_timeline بعد تطبيق هجرة المتابعين */
+  reposts_count: number;
+  /** أنا أعدت نشر البوست ده؟ — بيوصل من get_timeline بعد تطبيق هجرة المتابعين */
+  reposted_by_me: boolean;
+  /** كاتب البوست بيتابعني؟ — بيوصل من get_timeline بعد تطبيق هجرة المتابعين */
+  follows_me?: boolean;
   saved_by_me: boolean;
   following_author: boolean;
   repost_body: string | null;

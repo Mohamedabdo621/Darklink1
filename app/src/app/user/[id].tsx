@@ -122,7 +122,14 @@ export default function UserProfile() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={{ alignItems: 'center', marginTop: spacing.lg }}>
           <Avatar uri={avatar} name={user.shown_name} size={104} />
-          <Text style={styles.name}>{user.shown_name}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: spacing.md }}>
+            <Text style={[styles.name, { marginTop: 0 }]}>{user.shown_name}</Text>
+            {user.follows_me ? (
+              <View style={styles.followsYouBadge}>
+                <Text style={styles.followsYouText}>يتابعك</Text>
+              </View>
+            ) : null}
+          </View>
           {user.username ? (
             <Text style={{ color: colors.faint }}>@{user.username}</Text>
           ) : null}
@@ -136,6 +143,35 @@ export default function UserProfile() {
             />
             {user.is_vip ? <Chip label="👑 VIP" gold /> : null}
             {level ? <Chip label={`⭐ ${t('level.level')} ${level}`} /> : null}
+          </View>
+          {/* عدّادات المتابعة — دوسة بتفتح قائمة الأسماء */}
+          <View style={styles.followRow}>
+            <TouchableOpacity
+              style={styles.followStat}
+              onPress={() =>
+                router.push({
+                  pathname: '/follow-list',
+                  params: { userId: user.id, type: 'followers' },
+                })
+              }>
+              <Text style={styles.followNum}>
+                {user.followers_count !== undefined ? user.followers_count : '—'}
+              </Text>
+              <Text style={styles.followLabel}>المتابعون</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.followStat}
+              onPress={() =>
+                router.push({
+                  pathname: '/follow-list',
+                  params: { userId: user.id, type: 'following' },
+                })
+              }>
+              <Text style={styles.followNum}>
+                {user.following_count !== undefined ? user.following_count : '—'}
+              </Text>
+              <Text style={styles.followLabel}>يتابع</Text>
+            </TouchableOpacity>
           </View>
           {seenText ? (
             <Text style={{ color: colors.faint, fontSize: fonts.sizes.xs, marginTop: spacing.sm }}>
@@ -285,6 +321,28 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     fontWeight: fonts.weights.black,
     marginTop: spacing.md,
   },
+  /** شارة «يتابعك» — بتظهر جنب الاسم لما صاحب الملف بيتابعني */
+  followsYouBadge: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(168,85,247,0.15)',
+    borderRadius: radius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  followsYouText: { color: colors.primaryBright, fontSize: fonts.sizes.sm, fontWeight: '700' },
+  followRow: {
+    flexDirection: 'row',
+    gap: spacing.xl,
+    marginTop: spacing.md,
+  },
+  followStat: { alignItems: 'center' },
+  followNum: {
+    color: colors.text,
+    fontSize: fonts.sizes.lg,
+    fontWeight: fonts.weights.black,
+  },
+  followLabel: { color: colors.muted, fontSize: fonts.sizes.sm, marginTop: 2 },
   bio: {
     color: colors.muted,
     fontSize: fonts.sizes.md,

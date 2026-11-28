@@ -28,10 +28,10 @@ import {
   findByUsername,
   postMediaUrl,
   reportPost,
-  repostPost,
   toggleFollow,
   togglePinPost,
   togglePostLike,
+  toggleRepost,
   toggleSavePost,
   votePoll,
 } from '../services/timeline';
@@ -106,7 +106,6 @@ export default function PostCard({
   onChanged,
   onDeleted,
   onOpenComments,
-  onReposted,
 }: {
   post: Post;
   currentUserId: string;
@@ -114,13 +113,15 @@ export default function PostCard({
   onChanged: (p: Post) => void;
   onDeleted: (id: string) => void;
   onOpenComments: (p: Post) => void;
-  onReposted?: () => void;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const [liked, setLiked] = useState(post.liked_by_me);
   const [likes, setLikes] = useState(post.likes_count);
+  // إعادة النشر عدّاد — نفس نمط اللايك: حالة محلية بتتزامن مع onChanged
+  const [reposted, setReposted] = useState(post.reposted_by_me);
+  const [reposts, setReposts] = useState(post.reposts_count);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [repostImgUrl, setRepostImgUrl] = useState<string | null>(null);
@@ -233,11 +234,20 @@ export default function PostCard({
   }, [post]);
 
   const doRepost = useCallback(async () => {
-    const res = await repostPost(post.id);
-    if (res.ok) {
-      onReposted?.();
+    const wasReposted = reposted;
+    setReposted(!wasReposted);
+    setReposts((n) => n + (wasReposted ? -1 : 1));
+    const res = await toggleRepost(post.id);
+    if (res.ok && res.reposted !== undefined) {
+      setReposted(res.reposted);
+      if (res.reposts_count !== undefined) setReposts(res.reposts_count);
+      onChanged({
+        ...post,
+        reposted_by_me: res.reposted,
+        reposts_count: res.reposts_count ?? reposts,
+      });
     }
-  }, [post, onReposted]);
+  }, [reposted, post, reposts, onChanged]);
 
   const doSave = useCallback(async () => {
     const res = await toggleSavePost(post.id);
@@ -355,10 +365,17 @@ export default function PostCard({
         <View style={styles.header}>
           <Avatar uri={avatarUrl} name={post.shown_name} size={44} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.name}>
-              {post.shown_name}
-              {post.is_vip ? ' 👑' : ''}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.name} numberOfLines={1}>
+                {post.shown_name}
+                {post.is_vip ? ' 👑' : ''}
+              </Text>
+              {post.follows_me ? (
+                <View style={styles.followsYouBadge}>
+                  <Text style={styles.followsYouText}>يتابعك</Text>
+                </View>
+              ) : null}
+            </View>
             <Text style={styles.time}>
               {timeAgo(t, post.created_at)}
               {post.edited ? ` • ${t('timeline.edited')}` : ''}
@@ -514,7 +531,12 @@ export default function PostCard({
             <Text style={styles.actionCount}>{post.comments_count}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => void doRepost()} style={styles.actionBtn}>
-            <Ionicons name="repeat-outline" size={24} color={colors.text} />
+            <Ionicons
+              name={reposted ? 'repeat' : 'repeat-outline'}
+              size={24}
+              color={reposted ? colors.accent : colors.text}
+            />
+            <Text style={styles.actionCount}>{reposts}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => void doSave()} style={styles.actionBtn}>
             <Ionicons
@@ -543,7 +565,17 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.stroke,
   },
-  name: { color: colors.text, fontWeight: '700', fontSize: fonts.sizes.md },
+  name: { color: colors.text, fontWeight: '700', fontSize: fonts.sizes.md, flexShrink: 1 },
+  /** شارة «يتابعك» — بتظهر جنب اسم كاتب البوست لما يكون بيتابعني */
+  followsYouBadge: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(168,85,247,0.15)',
+    borderRadius: radius.full,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  followsYouText: { color: colors.primaryBright, fontSize: fonts.sizes.xs, fontWeight: '700' },
   time: { color: colors.faint, fontSize: fonts.sizes.xs, marginTop: 2 },
   body: { color: colors.text, fontSize: fonts.sizes.md, lineHeight: 23 },
   postImg: {

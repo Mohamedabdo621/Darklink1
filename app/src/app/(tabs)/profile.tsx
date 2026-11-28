@@ -1,11 +1,13 @@
 import React, { useCallback, useState, useMemo } from 'react';
-import { ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { TabSwipe } from '../../components/TabSwipe';
 import { useTranslation } from 'react-i18next';
 import { Chip, GlowCard, NeonButton, Screen } from '../../components/ui';
+import { Skeleton } from '../../components/Skeleton';
 import { GlassIconChip } from '../../components/GlassIconButton';
 import { Avatar } from '../../components/Avatar';
 import { useAuth } from '../../contexts/AuthContext';
@@ -18,6 +20,7 @@ import {
   type MyLevel,
 } from '../../services/economy';
 import { fetchMyReferralStats, fetchTimeline } from '../../services/timeline';
+import { fetchPublicProfile } from '../../services/social';
 import PostCard from '../../components/PostCard';
 import type { Post } from '../../lib/types';
 import { ACHIEVEMENT_KEYS, fetchMyAchievements } from '../../services/features';
@@ -40,6 +43,11 @@ export default function ProfileTab() {
   const [refCount, setRefCount] = useState(0);
   const [refEarned, setRefEarned] = useState(0);
   const [myPosts, setMyPosts] = useState<Post[]>([]);
+  /** عدّادات المتابعة — بتيجي من get_public_profile (null لحد ما الهجرة تتطبق) */
+  const [followersCount, setFollowersCount] = useState<number | null>(null);
+  const [followingCount, setFollowingCount] = useState<number | null>(null);
+  /** أول تحميل اكتمل؟ — الأرقام بتبدأ 0، فقبل التحميل لازم هياكل مش 0/0 */
+  const [firstLoaded, setFirstLoaded] = useState(false);
 
   const inviteLink = `https://mohamedabdo621.github.io/Darklink1/register?ref=${refCode}`;
 
@@ -47,6 +55,19 @@ export default function ProfileTab() {
     if (!refCode) return;
     await Share.share({
       message: t('referral.shareText', { code: refCode, link: inviteLink }),
+    });
+  };
+
+  /** مشاركة البوستر: نص جاهز فيه الكود والرابط (نفس محتوى البوستر).
+   *  تصدير البوستر كصورة فعلية محتاج react-native-view-shot — مش
+   *  مثبّتة، فمفيش تثبيت جديد هنا؛ المشاركة النصية هي المتاحة دلوقتي. */
+  const sharePoster = async () => {
+    if (!refCode) return;
+    await Share.share({
+      message:
+        '🌙 DARKLINK — انضم عن طريقي وخد 25 جوهرة هدية!\n' +
+        `كود الدعوة: ${refCode}\n` +
+        `الرابط: ${inviteLink}`,
     });
   };
 
@@ -62,6 +83,11 @@ export default function ProfileTab() {
     setAchievements(await fetchMyAchievements(profile.id));
     setMyLevel(await fetchMyLevel());
     setMyPosts((await fetchTimeline(undefined, 'mine')).slice(0, 3));
+    const pub = await fetchPublicProfile(profile.id);
+    if (pub) {
+      setFollowersCount(pub.followers_count ?? null);
+      setFollowingCount(pub.following_count ?? null);
+    }
     const stats = await fetchMyReferralStats();
     if (stats) {
       setRefCode(stats.code);
@@ -80,6 +106,7 @@ export default function ProfileTab() {
       .eq('sender_id', profile.id);
     setReceived(r.count ?? 0);
     setSent(s.count ?? 0);
+    setFirstLoaded(true);
   }, [profile]);
 
   useFocusEffect(
@@ -95,7 +122,11 @@ export default function ProfileTab() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={{ alignItems: 'center', marginTop: spacing.lg }}>
           <Avatar uri={avatar} name={shownNameOf(profile)} size={110} />
-          <Text style={styles.name}>{shownNameOf(profile)}</Text>
+          {/* شارة VIP جنب الاسم نفسه (الشريحة اللي تحت لسه موجودة) */}
+          <Text style={styles.name}>
+            {shownNameOf(profile)}
+            {profile.is_vip ? ' 👑' : ''}
+          </Text>
           <Text style={{ color: colors.faint }}>@{profile.anonymous_alias}</Text>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.sm }}>
             <Chip
@@ -106,6 +137,35 @@ export default function ProfileTab() {
               }
             />
             {profile.is_vip ? <Chip label="👑 VIP" gold /> : null}
+          </View>
+          {/* عدّادات المتابعة — دوسة بتفتح قائمة الأسماء */}
+          <View style={styles.followRow}>
+            <TouchableOpacity
+              style={styles.followStat}
+              onPress={() =>
+                router.push({
+                  pathname: '/follow-list',
+                  params: { userId: profile.id, type: 'followers' },
+                })
+              }>
+              <Text style={styles.followNum}>
+                {followersCount !== null ? followersCount : '—'}
+              </Text>
+              <Text style={styles.followLabel}>المتابعون</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.followStat}
+              onPress={() =>
+                router.push({
+                  pathname: '/follow-list',
+                  params: { userId: profile.id, type: 'following' },
+                })
+              }>
+              <Text style={styles.followNum}>
+                {followingCount !== null ? followingCount : '—'}
+              </Text>
+              <Text style={styles.followLabel}>يتابع</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -136,14 +196,22 @@ export default function ProfileTab() {
 
         <View style={styles.statsRow}>
           <GlowCard style={styles.stat}>
-            <Text style={styles.statNum}>{received}</Text>
+            {!firstLoaded ? (
+              <Skeleton width="50%" height={26} borderRadius={8} />
+            ) : (
+              <Text style={styles.statNum}>{received}</Text>
+            )}
             <View style={styles.statLabelRow}>
               <GlassIconChip name="gift-outline" size={13} />
               <Text style={styles.statLabel}>{t('profile.giftsReceived')}</Text>
             </View>
           </GlowCard>
           <GlowCard style={styles.stat}>
-            <Text style={styles.statNum}>{sent}</Text>
+            {!firstLoaded ? (
+              <Skeleton width="50%" height={26} borderRadius={8} />
+            ) : (
+              <Text style={styles.statNum}>{sent}</Text>
+            )}
             <View style={styles.statLabelRow}>
               <GlassIconChip name="paper-plane-outline" size={13} />
               <Text style={styles.statLabel}>{t('profile.giftsSent')}</Text>
@@ -265,6 +333,33 @@ export default function ProfileTab() {
               />
             </View>
           </View>
+          {/* بوستر الدعوة — بطاقة جاهزة للمشاركة (كود + رابط + مكافأة).
+              تصديرها كصورة محتاج react-native-view-shot (مش مثبّتة)؛
+              زرار "مشاركة البوستر" بيشارك نفس المحتوى كنص دلوقتي. */}
+          {firstLoaded && refCode ? (
+            <View style={{ marginTop: spacing.md }}>
+              <LinearGradient
+                colors={['#7c3aed', '#a855f7', '#d946ef']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.poster}>
+                <Text style={styles.posterLogo}>DARKLINK 🌙</Text>
+                <Text style={styles.posterTag}>انضم وخد 25 جوهرة هدية!</Text>
+                <Text style={styles.posterCode}>{refCode}</Text>
+                <Text style={styles.posterLink} numberOfLines={1}>
+                  {inviteLink}
+                </Text>
+                <Text style={styles.posterName}>{shownNameOf(profile)}</Text>
+              </LinearGradient>
+              <View style={{ height: spacing.sm }} />
+              <NeonButton
+                title="مشاركة البوستر"
+                icon="share-social-outline"
+                variant="ghost"
+                onPress={sharePoster}
+              />
+            </View>
+          ) : null}
         </GlowCard>
 
         {/* الإنجازات */}
@@ -321,6 +416,9 @@ export default function ProfileTab() {
             onPress={() => router.push('/edit-profile')}
           />
         </View>
+        {/* مساحة سفلية على الويب بس: الشريط السفلي position:fixed فوق
+            المحتوى، ومن غيرها آخر العناصر بتقعد تحته. */}
+        <View style={{ height: Platform.OS === 'web' ? 86 : 0 }} />
       </ScrollView>
     </Screen>
     </TabSwipe>
@@ -380,6 +478,18 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     fontWeight: fonts.weights.black,
     marginTop: spacing.md,
   },
+  followRow: {
+    flexDirection: 'row',
+    gap: spacing.xl,
+    marginTop: spacing.md,
+  },
+  followStat: { alignItems: 'center' },
+  followNum: {
+    color: colors.text,
+    fontSize: fonts.sizes.lg,
+    fontWeight: fonts.weights.black,
+  },
+  followLabel: { color: colors.muted, fontSize: fonts.sizes.sm, marginTop: 2 },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -439,4 +549,31 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     marginTop: 2,
   },
   statLabel: { color: colors.muted, fontSize: fonts.sizes.sm },
+  poster: {
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    alignItems: 'center',
+    gap: 6,
+  },
+  posterLogo: {
+    color: colors.white,
+    fontSize: fonts.sizes.xxl,
+    fontWeight: fonts.weights.black,
+    letterSpacing: 3,
+  },
+  posterTag: { color: colors.white, fontSize: fonts.sizes.md, fontWeight: '700' },
+  posterCode: {
+    color: colors.white,
+    fontSize: fonts.sizes.hero,
+    fontWeight: fonts.weights.black,
+    letterSpacing: 2,
+    marginTop: spacing.sm,
+  },
+  posterLink: { color: 'rgba(255,255,255,0.85)', fontSize: fonts.sizes.xs },
+  posterName: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: fonts.sizes.sm,
+    fontWeight: '700',
+    marginTop: spacing.sm,
+  },
 });

@@ -1,7 +1,8 @@
 import React, { useCallback, useState, useMemo } from 'react';
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { appAlert } from '../lib/dialog';
+import { supabase } from '../lib/supabase';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { GlowCard, NeonButton, Screen } from '../components/ui';
@@ -15,8 +16,31 @@ import { fonts, radius, spacing } from '../theme';
 
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme';
-const VIP_SILVER_PRICE = 500;
-const VIP_GOLD_PRICE = 1000;
+/** أسعار VIP الافتراضية = القيم الحالية في app_config — احتياطي بس لحد
+ *  ما الـ RPC يرجّع المفتاحين (انظر fetchVipPrices). */
+const VIP_SILVER_FALLBACK = 500;
+const VIP_GOLD_FALLBACK = 1000;
+
+/** أسعار VIP من app_config — بنفس الطريق اللي بيجيب أرقام الكاش
+ *  (RPC الـ public_cash_info اللي بيقرا app_config من السيرفر، لأن
+ *  الجدول نفسه بلا وصول عميل). ملحوظة: الـ RPC الحالي بيرجّع بس
+ *  vodafone/etisalat/bonus_pct — لازم يتضاف له المفتاحين
+ *  vip_silver_price و vip_price_gems (migration) عشان القيم دي
+ *  تيجي من الإعدادات فعلًا؛ لحد ما ده يحصل بيظهر الاحتياطي. */
+async function fetchVipPrices(): Promise<{ silver: number; gold: number }> {
+  const { data } = await supabase.rpc('public_cash_info');
+  const d = (data ?? {}) as {
+    vip_silver_price?: string | number;
+    vip_price_gems?: string | number;
+  };
+  const silver = Number(d.vip_silver_price);
+  const gold = Number(d.vip_price_gems);
+  return {
+    silver:
+      Number.isFinite(silver) && silver > 0 ? silver : VIP_SILVER_FALLBACK,
+    gold: Number.isFinite(gold) && gold > 0 ? gold : VIP_GOLD_FALLBACK,
+  };
+}
 
 export default function Store() {
   const { colors } = useTheme();
@@ -26,15 +50,20 @@ export default function Store() {
   const [packages, setPackages] = useState<GemPackage[]>([]);
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [balance, setBalance] = useState(0);
+  const [vipPrices, setVipPrices] = useState({
+    silver: VIP_SILVER_FALLBACK,
+    gold: VIP_GOLD_FALLBACK,
+  });
   const [busyId, setBusyId] = useState<string | null>(null);
   const [previewGift, setPreviewGift] = useState<Gift | null>(null);
 
   const load = useCallback(async () => {
     if (!me) return;
-    const [p, g, w] = await Promise.all([
+    const [p, g, w, vip] = await Promise.all([
       fetchPackages(),
       fetchGiftsCatalog(),
       fetchWallet(me.id),
+      fetchVipPrices(),
     ]);
     setPackages(p);
     setGifts(
@@ -46,6 +75,7 @@ export default function Store() {
       ),
     );
     if (w) setBalance(w.balance);
+    setVipPrices(vip);
   }, [me]);
 
   useFocusEffect(
@@ -71,7 +101,7 @@ export default function Store() {
   };
 
   const buyVipTier = (tier: 'silver' | 'gold') => {
-    const price = tier === 'silver' ? VIP_SILVER_PRICE : VIP_GOLD_PRICE;
+    const price = tier === 'silver' ? vipPrices.silver : vipPrices.gold;
     appAlert(
       tier === 'silver' ? `🥈 ${t('store.vipSilver')}` : `👑 ${t('store.vipGold')}`,
       t('store.vipPrice', { gems: price }),
@@ -146,7 +176,7 @@ export default function Store() {
                 🥈 {t('store.vipSilver')}
               </Text>
               <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
-                {t('store.vipPrice', { gems: VIP_SILVER_PRICE })}
+                {t('store.vipPrice', { gems: vipPrices.silver })}
               </Text>
               <NeonButton
                 title={t('store.vipActivate')}
@@ -159,7 +189,7 @@ export default function Store() {
                 👑 {t('store.vipGold')}
               </Text>
               <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
-                {t('store.vipPrice', { gems: VIP_GOLD_PRICE })}
+                {t('store.vipPrice', { gems: vipPrices.gold })}
               </Text>
               <NeonButton
                 title={t('store.vipActivate')}
@@ -200,7 +230,9 @@ export default function Store() {
           title={t('giftAnimation.preview')}
           onClose={() => setPreviewGift(null)}
         />
-        <View style={{ height: spacing.xxl }} />
+        {/* مسافة سفلية: على الويب الشريط السفلي مثبّت (fixed) فوق المحتوى،
+            فلازم مساحة تكفي ارتفاعه (62) + بعده عن الحافة (8) + نفس */}
+        <View style={{ height: Platform.OS === 'web' ? 86 : spacing.xxl }} />
       </ScrollView>
     </Screen>
   );

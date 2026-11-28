@@ -3,7 +3,6 @@ import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'reac
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import {
   AudioModule,
   RecordingPresets,
@@ -13,7 +12,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { GlowCard, NeonButton, Screen } from '../components/ui';
 import { appAlert } from '../lib/dialog';
-import { createPost, pickPostImage, pickPostVideo } from '../services/timeline';
+import { createPost, pickPostImage } from '../services/timeline';
 import { fonts, radius, spacing } from '../theme';
 
 import { useTheme } from '../contexts/ThemeContext';
@@ -30,7 +29,7 @@ export default function ComposePost() {
   const { t } = useTranslation();
   const [body, setBody] = useState('');
   const [mediaUri, setMediaUri] = useState<string | null>(null);
-  const [mediaType, setMediaType] = useState<'image' | 'video' | 'voice' | null>(null);
+  const [mediaType, setMediaType] = useState<'image' | 'voice' | null>(null);
   const [voiceDuration, setVoiceDuration] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   // الاستطلاع: سؤال اختياري + خيارين لحد 4
@@ -44,8 +43,6 @@ export default function ComposePost() {
   });
   const recState = useAudioRecorderState(recorder, 500);
   const [recording, setRecording] = useState(false);
-
-  const videoPlayer = useVideoPlayer(mediaType === 'video' ? mediaUri : null);
 
   const clearMedia = () => {
     setMediaUri(null);
@@ -109,14 +106,27 @@ export default function ComposePost() {
       ]);
     } else if (res.reason === 'daily_limit') {
       appAlert(t('common.error'), t('timeline.dailyLimit'));
+    } else if (res.reason === 'bad_poll') {
+      appAlert(t('common.error'), t('timeline.pollNeedTwo'));
+    } else if (res.reason === 'upload_failed') {
+      appAlert(t('common.error'), 'تعذّر رفع الملف — اتأكد من النت وحاول تاني');
+    } else if (res.reason === 'not_authenticated') {
+      appAlert(t('common.error'), 'انتهت جلستك — سجّل دخولك من جديد وحاول تاني');
     } else {
-      appAlert(t('common.error'), t('common.error'));
+      appAlert(t('common.error'), 'حصل خطأ غير متوقع — حاول تاني');
     }
   };
 
   return (
     <Screen>
       <KeyboardAwareScrollView showsVerticalScrollIndicator={false}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          hitSlop={8}>
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
+          <Text style={styles.backText}>{t('common.back')}</Text>
+        </TouchableOpacity>
         <Text style={styles.title}>{t('timeline.compose')}</Text>
         <GlowCard>
           <TextInput
@@ -135,19 +145,6 @@ export default function ComposePost() {
               <Image source={{ uri: mediaUri }} style={styles.preview} />
               <TouchableOpacity onPress={clearMedia}>
                 <Text style={styles.remove}>{t('timeline.removePhoto')}</Text>
-              </TouchableOpacity>
-            </View>
-          ) : null}
-          {mediaUri && mediaType === 'video' ? (
-            <View>
-              <VideoView
-                player={videoPlayer}
-                style={styles.preview}
-                nativeControls
-                contentFit="contain"
-              />
-              <TouchableOpacity onPress={clearMedia}>
-                <Text style={styles.remove}>{t('timeline.removeVideo')}</Text>
               </TouchableOpacity>
             </View>
           ) : null}
@@ -176,19 +173,6 @@ export default function ComposePost() {
               }}>
               <Ionicons name="image-outline" size={22} color={colors.primaryBright} />
               <Text style={styles.attachText}>{t('timeline.photo')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.attachBtn}
-              onPress={async () => {
-                const uri = await pickPostVideo();
-                if (uri) {
-                  setMediaUri(uri);
-                  setMediaType('video');
-                  setVoiceDuration(null);
-                }
-              }}>
-              <Ionicons name="videocam-outline" size={22} color={colors.primaryBright} />
-              <Text style={styles.attachText}>{t('timeline.video')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.attachBtn}
@@ -264,18 +248,36 @@ export default function ComposePost() {
 }
 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  backText: { color: colors.text, fontWeight: '700', fontSize: fonts.sizes.md },
   title: {
     color: colors.text,
     fontSize: fonts.sizes.xl,
     fontWeight: fonts.weights.bold,
     marginVertical: spacing.md,
   },
+  /** حقل الكتابة الرئيسي: من غير أي صندوق أو إطار — النص على الكارت
+   *  الزجاجي مباشرة وبس خط المؤشر | زي واتساب. نفس نمط كومبوزر الشات:
+   *  outlineWidth: 0 لوحده ما شالوش، فلازم outlineStyle: 'none'
+   *  (والـ cast عشان 'none' مش في اتحاد أنواع RN). */
   input: {
     color: colors.text,
     fontSize: fonts.sizes.md,
     lineHeight: 23,
     minHeight: 120,
     textAlignVertical: 'top',
+    outlineWidth: 0,
+    outlineStyle: 'none' as 'solid',
+    // caretColor مش في أنواع RN — بس React Native Web بيمررها لـ CSS،
+    // والـ cast ده عشان tsc يعدّيها.
+    ...( { caretColor: colors.text } as unknown as object ),
   },
   counter: { color: colors.faint, fontSize: fonts.sizes.xs, textAlign: 'right', marginTop: 4 },
   preview: {
@@ -309,6 +311,8 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   pollBox: { gap: spacing.sm, marginTop: spacing.sm },
+  /** حقول الاستطلاع الصغيرة: بتفضل بإطارها الزجاجي المستدير الخفيف،
+   *  بس من غير إطار التركيز المستطيل بتاع المتصفح — نفس نمط الكومبوزر. */
   pollInput: {
     color: colors.text,
     fontSize: fonts.sizes.md,
@@ -318,6 +322,9 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     backgroundColor: colors.surfaceLight,
+    outlineWidth: 0,
+    outlineStyle: 'none' as 'solid',
+    ...( { caretColor: colors.text } as unknown as object ),
   },
   pollOptRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   addOpt: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },

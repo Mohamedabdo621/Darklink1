@@ -27,8 +27,11 @@ export default function VoiceBubble({
   mine: boolean;
   bucket?: 'voice-notes' | 'post-media';
 }) {
-  const { colors } = useTheme();
+  const { colors, resolved } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  /** الموجة اللي لسه متسمعتش في الرسايل المستلمة كانت باهتة في الفاتح
+   *  (بنفسجي 30% على خلفية فاتحة) — في الفاتح أغمق وأقوى، وفي الغامق
+   *  زي ما هي. الموجة اللي اتسمعت بتفضل بلون الـ accent. */
   const [uri, setUri] = useState<string | null>(null);
   const [speedIdx, setSpeedIdx] = useState(0);
   const player = useAudioPlayer(uri ? { uri } : null);
@@ -90,7 +93,9 @@ export default function VoiceBubble({
                     : colors.accent
                   : mine
                     ? 'rgba(255,255,255,0.35)'
-                    : 'rgba(168,85,247,0.3)',
+                    : resolved === 'light'
+                      ? 'rgba(124,58,237,0.55)'
+                      : 'rgba(168,85,247,0.3)',
             }}
           />
         ))}

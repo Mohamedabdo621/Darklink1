@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   FlatList,
+  Platform,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -16,6 +18,7 @@ import Animated, { useAnimatedReaction, useAnimatedStyle, useSharedValue } from 
 import type { SharedValue } from 'react-native-reanimated';
 import { Avatar } from '../../components/Avatar';
 import { Logo, Screen } from '../../components/ui';
+import { SkeletonList } from '../../components/Skeleton';
 import { TabSwipe } from '../../components/TabSwipe';
 import { useAuth } from '../../contexts/AuthContext';
 import { appAlert } from '../../lib/dialog';
@@ -134,8 +137,10 @@ export default function Chats() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { profile: me } = useAuth();
-  const [rows, setRows] = useState<ChatRow[]>([]);
+  /** null = لسه بيتحمل (هياكل)؛ [] بعد التحميل = مفيش محادثات فعلًا */
+  const [rows, setRows] = useState<ChatRow[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [query, setQuery] = useState('');
   // حالة السحب لكل صف: أقصى مسافة سحب + أدوات التحكم في الصف (للإغلاق)
   // وعلامة إن نافذة تأكيد معروضة + إن السحب بدأ من صف مقفول.
   const swipeHandles = useRef(new Map<string, SwipeRowHandle>());
@@ -220,7 +225,7 @@ export default function Chats() {
   };
 
   const removeRow = (conversationId: string) =>
-    setRows((prev) => prev.filter((r) => r.conversationId !== conversationId));
+    setRows((prev) => (prev ?? []).filter((r) => r.conversationId !== conversationId));
 
   const onHide = (
     item: ChatRow,
@@ -326,7 +331,7 @@ export default function Chats() {
   ) => {
     if (await toggleConversationFlag(item.conversationId, flag)) {
       setRows((prev) => {
-        const next = prev.map((r) =>
+        const next = (prev ?? []).map((r) =>
           r.conversationId === item.conversationId
             ? {
                 ...r,
@@ -363,6 +368,17 @@ export default function Chats() {
     ]);
   };
 
+  /** بحث بالاسم في المحادثات — الكتم هنا هو نفسه muted_for في القاعدة
+   *  (بيتكتم من القائمة الطويلة أو من جوه الشات)، والـ 🔇 باينة جنب
+   *  الاسم؛ الكتم ده هو اللي بيوقف إشعارات الدفع كمان (الخادم بيقرأه). */
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rows ?? [];
+    return (rows ?? []).filter((r) =>
+      (r.other?.shown_name ?? '').toLowerCase().includes(q),
+    );
+  }, [rows, query]);
+
   return (
     <TabSwipe current="chats">
       <Screen>
@@ -387,12 +403,40 @@ export default function Chats() {
           <Ionicons name="ellipsis-vertical" size={22} color={colors.text} />
         </TouchableOpacity>
       </View>
+      {/* بحث في المحادثات */}
+      <View style={styles.searchBox}>
+        <Ionicons name="search-outline" size={18} color={colors.muted} />
+        <TextInput
+          style={styles.searchInput}
+          value={query}
+          onChangeText={setQuery}
+          placeholder={t('discover.searchPlaceholder')}
+          placeholderTextColor={colors.faint}
+          returnKeyType="search"
+        />
+        {query ? (
+          <TouchableOpacity onPress={() => setQuery('')} hitSlop={8}>
+            <Ionicons name="close-circle" size={18} color={colors.muted} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
       <FlatList
-        data={rows}
+        data={filtered}
         keyExtractor={(r) => r.conversationId}
         refreshing={refreshing}
         onRefresh={onRefresh}
-        ListEmptyComponent={<Text style={styles.empty}>{t('chats.empty')}</Text>}
+        // مساحة سفلية على الويب بس: الشريط السفلي position:fixed فوق
+        // المحتوى، ومن غيرها آخر الصفوف بتقعد تحته.
+        contentContainerStyle={{ paddingBottom: Platform.OS === 'web' ? 86 : 0 }}
+        ListEmptyComponent={
+          rows === null ? (
+            <SkeletonList rows={6} />
+          ) : (
+            <Text style={styles.empty}>
+              {query ? 'لا توجد نتائج مطابقة' : t('chats.empty')}
+            </Text>
+          )
+        }
         renderItem={({ item }) => (
           <Swipeable
             friction={2}
@@ -496,6 +540,24 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: fonts.sizes.xl,
     fontWeight: fonts.weights.bold,
     marginVertical: spacing.md,
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.stroke,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    marginBottom: spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: fonts.sizes.md,
+    paddingVertical: 0,
   },
   empty: {
     color: colors.muted,

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import {
   ActivityIndicator,
   FlatList,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -91,11 +92,17 @@ export default function Discover() {
         placeholder={t('discover.searchPlaceholder')}
         autoCapitalize="none"
       />
+      {/* صف التصنيفات: سكرول أفقي بحشوة نهاية عشان آخر شريحة (أفلام)
+          متتقصّش، ومؤشر سكرول ظاهر عشان يبان إن الصف بيتحرك. */}
       <ScrollView
         horizontal
-        showsHorizontalScrollIndicator={false}
+        showsHorizontalScrollIndicator
         style={{ marginBottom: spacing.md, flexGrow: 0 }}
-        contentContainerStyle={{ gap: spacing.sm }}>
+        contentContainerStyle={{
+          gap: spacing.sm,
+          paddingStart: 2,
+          paddingEnd: spacing.xl,
+        }}>
         <TouchableOpacity
           onPress={() => pickInterest(null)}
           style={[styles.filterChip, !interest && styles.filterChipActive]}>
@@ -123,7 +130,12 @@ export default function Discover() {
         keyExtractor={(item) => item.id}
         numColumns={2}
         columnWrapperStyle={{ gap: spacing.md }}
-        contentContainerStyle={{ gap: spacing.md, paddingBottom: spacing.xl }}
+        contentContainerStyle={{
+          gap: spacing.md,
+          // على الويب الشريط السفلي مثبّت (fixed) فوق المحتوى، فلازم مساحة
+          // تكفي ارتفاعه (62) + بعده عن الحافة (8) + نفس
+          paddingBottom: Platform.OS === 'web' ? 96 : spacing.xl,
+        }}
         refreshing={refreshing}
         onRefresh={onRefresh}
         onEndReached={() => {

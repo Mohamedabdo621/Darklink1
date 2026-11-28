@@ -65,7 +65,7 @@ export default function CompleteProfile() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
-  const { profile, refreshProfile, signOut } = useAuth();
+  const { profile, refreshProfile, signOut, loading, profileError } = useAuth();
 
   const [step, setStep] = useState(0);
   const [mode, setMode] = useState<IdentityMode>(
@@ -175,6 +175,9 @@ export default function CompleteProfile() {
       gender: gender ?? null,
       bio: bio.trim() || null,
       interests,
+      // اختيار "عام" بيشغّل "مشاركة معلوماتي" تلقائيًا — من غيرها الاسم
+      // المعروض مش هيبان للناس حتى لو الحساب عام (shownNameOf بيشترط الاتنين).
+      ...(mode === 'public' ? { share_info: true } : {}),
     };
     const res = await updateMyProfile(profile.id, fields);
     setBusy(false);
@@ -182,7 +185,13 @@ export default function CompleteProfile() {
       appAlert(t('common.error'), t('common.error'));
       return;
     }
-    await refreshProfile();
+    // مننتقلش للرئيسية غير بعد ما إعادة جلب الملف تنجح — لو فشلت
+    // المستخدم يفضل هنا ويقدر يدوس "إنهاء" تاني بدل ما يدخل بملف قديم.
+    const ok = await refreshProfile();
+    if (!ok) {
+      appAlert(t('common.error'), 'اتحفظت بياناتك بس تعذّر تحديث ملفك — دوس إنهاء تاني');
+      return;
+    }
     router.replace('/(tabs)/home');
   };
 
@@ -192,12 +201,35 @@ export default function CompleteProfile() {
   };
 
   if (!profile) {
+    // لسه الجلب شغال — سبينر بس. لو الجلب فشل — شاشة إعادة محاولة
+    // (مش الفورم)، ولو مفيش صف أصلًا من غير خطأ — إعادة محاولة برضه
+    // لحد ما الصف يتكوّن.
+    if (loading) {
+      return (
+        <Screen>
+          <View style={styles.center}>
+            <Logo size={32} />
+            <ActivityIndicator color={colors.primary} size="large" />
+          </View>
+        </Screen>
+      );
+    }
     return (
       <Screen>
         <View style={styles.center}>
           <Logo size={32} />
-          <ActivityIndicator color={colors.primary} size="large" />
-          <NeonButton title={t('common.retry')} onPress={() => refreshProfile()} />
+          <Text style={styles.title}>
+            {profileError ? 'تعذّر تحميل ملفك' : 'ملفك لسه بيتجهز'}
+          </Text>
+          <Text style={styles.subtitle}>
+            {profileError ? 'اتأكد من النت وحاول تاني' : 'حاول تاني بعد شوية'}
+          </Text>
+          <NeonButton title={t('common.retry')} onPress={() => void refreshProfile()} />
+          <TouchableOpacity onPress={doSignOut} style={styles.backBtn}>
+            <Text style={{ color: colors.faint, fontSize: fonts.sizes.sm }}>
+              {t('completeProfile.signOut')}
+            </Text>
+          </TouchableOpacity>
         </View>
       </Screen>
     );
@@ -305,6 +337,12 @@ export default function CompleteProfile() {
                 ? t('completeProfile.displayNameHintPublic')
                 : t('completeProfile.displayNameHintAnonymous')}
             </Text>
+            {mode === 'public' ? (
+              <Text style={[styles.hint, { marginTop: spacing.xs }]}>
+                الاسم ده بيظهر للناس بس لما يكون حسابك «عام» و«مشاركة معلوماتي»
+                مفعّلة — واختيارك «عام» هنا هيشغّلها تلقائيًا.
+              </Text>
+            ) : null}
           </>
         )}
 
@@ -534,7 +572,14 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     textAlign: 'center',
     lineHeight: 16,
   },
-  hint: { color: colors.faint, fontSize: fonts.sizes.sm, marginTop: -spacing.sm },
+  hint: {
+    color: colors.faint,
+    fontSize: fonts.sizes.sm,
+    marginTop: -spacing.sm,
+    lineHeight: 20,
+    width: '100%',
+    flexShrink: 1,
+  },
   dateRow: { flexDirection: 'row', gap: spacing.md },
   errorText: { color: colors.danger, fontSize: fonts.sizes.sm, marginTop: -spacing.sm },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

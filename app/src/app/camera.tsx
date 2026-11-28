@@ -8,7 +8,13 @@ import { useTranslation } from 'react-i18next';
 import { NeonButton } from '../components/ui';
 import { GlassIconButton } from '../components/GlassIconButton';
 import { appAlert } from '../lib/dialog';
-import { sendMediaMessage, uploadChatFile } from '../services/chat';
+import {
+  deleteChatFile,
+  getLastChatSendError,
+  rateLimitMessage,
+  sendMediaMessage,
+  uploadChatFile,
+} from '../services/chat';
 import { fonts, spacing } from '../theme';
 
 import { useTheme } from '../contexts/ThemeContext';
@@ -54,17 +60,39 @@ export default function CameraScreen() {
   const sendPhoto = useCallback(async () => {
     if (!photoUri || !conversationId || !senderId || busy) return;
     setBusy(true);
-    const path = await uploadChatFile(
-      'chat-media',
-      conversationId,
-      senderId,
-      photoUri,
-      'jpg',
-      'image/jpeg',
-    );
-    if (path) {
-      await sendMediaMessage(conversationId, senderId, 'image', path, replyToId);
-      // امسح الملف المؤقت من الهاتف بعد ما اترفع — ميفضلش أي أثر
+    try {
+      const path = await uploadChatFile(
+        'chat-media',
+        conversationId,
+        senderId,
+        photoUri,
+        'jpg',
+        'image/jpeg',
+      );
+      if (!path) {
+        appAlert(t('common.error'), 'تعذّر رفع الصورة — اتأكد من النت وحاول تاني');
+        return;
+      }
+      const msg = await sendMediaMessage(
+        conversationId,
+        senderId,
+        'image',
+        path,
+        replyToId,
+      );
+      if (!msg) {
+        // الرفع نجح بس الرسالة متحفظتش — امسح الملف من التخزين عشان
+        // ميبقاش يتيم، وسيب الصورة المحلية والشاشة مفتوحة عشان
+        // المستخدم يحاول تاني. حد السرعة ليه رسالة عربية واضحة.
+        await deleteChatFile('chat-media', path);
+        appAlert(
+          t('common.error'),
+          rateLimitMessage(getLastChatSendError()) ??
+            'تعذّر إرسال الصورة — اتأكد من النت وحاول تاني',
+        );
+        return;
+      }
+      // امسح الملف المؤقت من الهاتف بعد ما اتبعت — ميفضلش أي أثر
       if (photoUri.startsWith('file://')) {
         try {
           new File(photoUri).delete();
@@ -73,10 +101,11 @@ export default function CameraScreen() {
         }
       }
       router.back();
-    } else {
-      appAlert(t('common.error'), t('common.error'));
+    } catch {
+      appAlert(t('common.error'), 'تعذّر إرسال الصورة — اتأكد من النت وحاول تاني');
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }, [photoUri, conversationId, senderId, replyToId, busy, t]);
 
   // ---- الإذن ----

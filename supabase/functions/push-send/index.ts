@@ -1,6 +1,7 @@
 // DARKLINK — إرسال إشعار Push (Edge Function)
 // تُستدعى من زناد قاعدة البيانات (pg_net) عند كل إشعار جديد.
-// المصادقة: ترويسة x-push-secret تُقارن بقيمة app_config (لا JWT).
+// المصادقة: ترويسة x-push-secret تُقارن بسرّ Edge Function
+// (PUSH_SECRET في Supabase Secrets) — لا JWT، ولا قراءة من app_config.
 // الخصوصية: نص الإشعار لا يحتوي أبدًا على محتوى الرسائل — اسم العرض فقط.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -31,14 +32,10 @@ Deno.serve(async (req) => {
   const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const admin = createClient(url, service);
 
-  // التحقق من السر المشترك
+  // التحقق من السر المشترك (سرّ Edge Function، لا يُقرأ من app_config)
   const secret = req.headers.get("x-push-secret") ?? "";
-  const { data: cfg } = await admin
-    .from("app_config")
-    .select("value")
-    .eq("key", "push_secret")
-    .single();
-  if (!cfg?.value || secret !== cfg.value) {
+  const expected = Deno.env.get("PUSH_SECRET") ?? "";
+  if (!expected || secret !== expected) {
     return json({ error: "unauthorized" }, 401);
   }
 

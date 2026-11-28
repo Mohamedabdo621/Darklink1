@@ -1,6 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
-import type { Post, PostComment, ReferralStats, TrendingPost } from '../lib/types';
+import type { FollowUser, Post, PostComment, ReferralStats, TrendingPost } from '../lib/types';
 
 export type TimelineFilter = 'all' | 'friends' | 'trending' | 'saved' | 'mine' | 'tag';
 
@@ -43,14 +43,18 @@ export async function createPost(
   if (!uid) return { ok: false, reason: 'not_authenticated' };
   let mediaPath: string | null = null;
   if (mediaUri) {
-    const res = await fetch(mediaUri);
-    const blob = await res.blob();
-    const ext = mediaUri.split('.').pop()?.split('?')[0] ?? 'jpg';
-    mediaPath = `${uid}/${Date.now()}.${ext}`;
-    const { error } = await supabase.storage
-      .from('post-media')
-      .upload(mediaPath, blob, { contentType: blob.type || 'image/jpeg' });
-    if (error) return { ok: false, reason: 'upload_failed' };
+    try {
+      const res = await fetch(mediaUri);
+      const blob = await res.blob();
+      const ext = mediaUri.split('.').pop()?.split('?')[0] ?? 'jpg';
+      mediaPath = `${uid}/${Date.now()}.${ext}`;
+      const { error } = await supabase.storage
+        .from('post-media')
+        .upload(mediaPath, blob, { contentType: blob.type || 'image/jpeg' });
+      if (error) return { ok: false, reason: 'upload_failed' };
+    } catch {
+      return { ok: false, reason: 'upload_failed' };
+    }
   }
   const pollJson =
     poll && poll.options.length >= 2
@@ -64,8 +68,19 @@ export async function createPost(
     p_poll: pollJson,
     p_repost_of: repostOf ?? null,
   });
-  if (error) return { ok: false, reason: 'error' };
-  return data as { ok: boolean; id?: string; reason?: string };
+  if (error) {
+    // الرفع نجح بس إنشاء البوست فشل — امسح الملف من التخزين عشان
+    // ميبقاش يتيم (القاعدة مش هتشاور عليه أبدًا).
+    if (mediaPath) {
+      await supabase.storage.from('post-media').remove([mediaPath]);
+    }
+    return { ok: false, reason: 'error' };
+  }
+  const result = data as { ok: boolean; id?: string; reason?: string };
+  if (!result.ok && mediaPath) {
+    await supabase.storage.from('post-media').remove([mediaPath]);
+  }
+  return result;
 }
 
 export async function pickPostImage(): Promise<string | null> {
@@ -73,17 +88,6 @@ export async function pickPostImage(): Promise<string | null> {
   if (!perm.granted) return null;
   const res = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['images'],
-    quality: 0.7,
-  });
-  if (res.canceled || !res.assets[0]) return null;
-  return res.assets[0].uri;
-}
-
-export async function pickPostVideo(): Promise<string | null> {
-  const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!perm.granted) return null;
-  const res = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ['videos'],
     quality: 0.7,
   });
   if (res.canceled || !res.assets[0]) return null;
@@ -181,11 +185,32 @@ export async function toggleFollow(
   return data as { ok: boolean; following?: boolean };
 }
 
-export async function repostPost(
+export async function toggleRepost(
   postId: string,
-  comment = '',
-): Promise<{ ok: boolean; id?: string; reason?: string }> {
-  return createPost(comment, null, null, null, null, postId);
+): Promise<{ ok: boolean; reposted?: boolean; reposts_count?: number }> {
+  const { data, error } = await supabase.rpc('toggle_repost', {
+    p_post: postId,
+  });
+  if (error) return { ok: false };
+  return data as { ok: boolean; reposted?: boolean; reposts_count?: number };
+}
+
+/** قائمة المتابعين لمستخدم — بترجع من RPC ‏get_followers */
+export async function fetchFollowers(userId: string): Promise<FollowUser[]> {
+  const { data, error } = await supabase.rpc('get_followers', {
+    p_user: userId,
+  });
+  if (error || !data) return [];
+  return data as FollowUser[];
+}
+
+/** قائمة اللي بيتابعهم مستخدم — بترجع من RPC ‏get_following */
+export async function fetchFollowing(userId: string): Promise<FollowUser[]> {
+  const { data, error } = await supabase.rpc('get_following', {
+    p_user: userId,
+  });
+  if (error || !data) return [];
+  return data as FollowUser[];
 }
 
 export async function findByUsername(

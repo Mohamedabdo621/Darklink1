@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -12,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { TabSwipe } from '../../components/TabSwipe';
 import { useTranslation } from 'react-i18next';
 import { NeonButton, Screen } from '../../components/ui';
+import { SkeletonPost } from '../../components/Skeleton';
 import PostCard from '../../components/PostCard';
 import { useAuth } from '../../contexts/AuthContext';
 import { fetchTimeline, fetchTrending, type TimelineFilter } from '../../services/timeline';
@@ -42,12 +44,14 @@ export default function Timeline() {
   const [filter, setFilter] = useState<TimelineFilter>('all');
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [trending, setTrending] = useState<TrendingPost[]>([]);
+  const [firstLoaded, setFirstLoaded] = useState(false);
 
   const loadTimeline = useCallback(
     async (before?: string, f: TimelineFilter = filter, tag: string | null = activeTag) => {
       setTimelineBusy(true);
       const rows = await fetchTimeline(before, f, tag);
       setTimelineBusy(false);
+      if (!before) setFirstLoaded(true);
       if (rows.length < 20) setTimelineDone(true);
       if (before) {
         setPosts((prev) => [...prev, ...rows]);
@@ -106,7 +110,10 @@ export default function Timeline() {
   return (
     <TabSwipe current="timeline">
       <Screen>
+        {/* flex:1 هو الإصلاح: من غيره الـ ScrollView بيكبر مع المحتوى
+            والزرار العايم "+" بيتحرك مع القايمة بدل ما يثبت. */}
         <ScrollView
+          style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -164,7 +171,16 @@ export default function Timeline() {
             </View>
           ) : null}
 
-          {posts.length === 0 && !timelineBusy ? (
+          {/* حالات الفراغ: هياكل أثناء التحميل (مش صفحة فاضية تبان فاضية)،
+              ونص "مفيش بوستات" بس بعد ما الجلب يرجع فاضي فعلًا. */}
+          {!firstLoaded || (timelineBusy && posts.length === 0) ? (
+            <View style={{ marginTop: spacing.md }}>
+              <SkeletonPost />
+              <SkeletonPost />
+              <SkeletonPost />
+            </View>
+          ) : null}
+          {posts.length === 0 && firstLoaded && !timelineBusy ? (
             <Text style={{ color: colors.muted, marginBottom: spacing.lg }}>
               {filter === 'friends'
                 ? t('timeline.noFriendsPosts')
@@ -186,7 +202,6 @@ export default function Timeline() {
               onOpenComments={(pp) =>
                 router.push({ pathname: '/post/[id]', params: { id: pp.id } })
               }
-              onReposted={() => void loadTimeline()}
             />
           ))}
           {!timelineDone && posts.length > 0 ? (
@@ -201,6 +216,9 @@ export default function Timeline() {
           ) : (
             <View style={{ height: spacing.xxl }} />
           )}
+          {/* مساحة سفلية على الويب بس: الشريط السفلي position:fixed فوق
+              المحتوى، ومن غيرها آخر العناصر بتقعد تحته. */}
+          <View style={{ height: Platform.OS === 'web' ? 86 : 0 }} />
         </ScrollView>
         {/* زر منشور جديد عايم فوق الشريط السفلي */}
         <TouchableOpacity

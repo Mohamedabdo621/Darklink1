@@ -270,7 +270,18 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     borderColor: colors.stroke,
   },
   changePhoto: { color: colors.primaryBright, textAlign: 'center', marginTop: spacing.sm },
-  hint: { color: colors.faint, fontSize: fonts.sizes.xs, marginTop: -6, marginBottom: spacing.md },
+  hint: {
+    color: colors.faint,
+    fontSize: fonts.sizes.xs,
+    marginTop: -6,
+    marginBottom: spacing.md,
+    // السطر كان بيتقص على اليمين: النص لازم ياخد عرض الحاوية كامل
+    // ويلف على سطرين بدل ما يمتد برّاها.
+    width: '100%',
+    flexShrink: 1,
+    flexWrap: 'wrap',
+    lineHeight: 18,
+  },
   privacyLabel: {
     color: colors.text,
     fontSize: fonts.sizes.md,
