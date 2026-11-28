@@ -1,0 +1,57 @@
+name: Build test APK (debug)
+
+on:
+  workflow_dispatch:
+    push:
+    paths:
+      - '.github/workflows/build-test-apk.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Prebuild Android (fresh native project)
+        working-directory: app
+        run: npx expo prebuild --platform android --non-interactive --clean
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build debug APK
+        working-directory: app/android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Publish test release with the APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test-apk-20261128
+          name: Test APK — 28 Nov 2026 (debug)
+          body: |
+            Test (debug) build of DARKLINK for trying on a phone.
+            Uninstall this build before installing the 1 Dec release APK (different signature).
+          files: app/android/app/build/outputs/apk/debug/app-debug.apk
+          fail_on_unmatched_files: true
