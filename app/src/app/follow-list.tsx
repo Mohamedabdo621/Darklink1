@@ -67,7 +67,7 @@ export default function FollowList() {
               onPress={() =>
                 router.push({
                   pathname: '/user/[id]',
-                  params: { id: r.user_id },
+                  params: { id: r.public_code ?? r.user_id },
                 })
               }>
               <Avatar uri={avatars[r.user_id]} name={r.shown_name} size={46} />

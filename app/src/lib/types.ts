@@ -29,8 +29,10 @@ export interface Profile {
   language: Language;
   /** تفضيل الثيم: light | dark | system — يُزامَن من ThemeContext (عمود اختياري) */
   theme_preference?: 'light' | 'dark' | 'system' | null;
-  /** معرف الحساب العام: 14 رقم للعرض — الـ UUID الداخلي (id) ميتغيرش */
+  /** معرّف الحساب العام: 14 رقم للعرض — الـ UUID الداخلي (id) ميتغيرش */
   public_id?: number | null;
+  /** الكود العام للحساب: حرف-رقم (A-1…) — هو المعرّف الظاهر في الواجهة */
+  public_code?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -48,6 +50,8 @@ export interface PublicProfile {
   last_seen_at?: string | null;
   /** معرف الحساب العام: 14 رقم للعرض (بيوصل من RPC بعد تطبيق هجرة v1.6.0) */
   public_id?: number | null;
+  /** الكود العام للحساب: حرف-رقم (A-1…) — هو المعرّف الظاهر في الواجهة */
+  public_code?: string | null;
   /** عدد المتابعين — بيوصل من get_public_profile بعد تطبيق هجرة المتابعين */
   followers_count?: number;
   /** عدد اللي بيتابعهم — بيوصل من get_public_profile بعد تطبيق هجرة المتابعين */
@@ -63,6 +67,8 @@ export interface FollowUser {
   shown_name: string;
   username: string | null;
   avatar_url: string | null;
+  /** الكود العام للحساب (A-1…) — للتنقل للملف بالكود بدل الـ UUID */
+  public_code?: string | null;
 }
 
 export interface Wallet {

@@ -63,7 +63,7 @@ function RichBody({ text, style }: { text: string; style: TextStyle }) {
   const openMention = async (name: string) => {
     const u = await findByUsername(name);
     if (u) {
-      router.push({ pathname: '/user/[id]', params: { id: u.id } });
+      router.push({ pathname: '/user/[id]', params: { id: u.public_code ?? u.id } });
     } else {
       appAlert(t('common.error'), t('timeline.userNotFound'));
     }

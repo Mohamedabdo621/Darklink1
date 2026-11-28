@@ -1675,7 +1675,11 @@ export default function ChatScreen() {
         <TouchableOpacity
           style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 }}
           onPress={() =>
-            otherId && router.push({ pathname: '/user/[id]', params: { id: otherId } })
+            otherId &&
+            router.push({
+              pathname: '/user/[id]',
+              params: { id: other?.public_code ?? otherId },
+            })
           }>
           <Avatar uri={otherAvatar} name={other?.shown_name} size={38} />
           <View>

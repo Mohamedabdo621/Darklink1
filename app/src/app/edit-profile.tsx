@@ -13,9 +13,11 @@ import { useAuth } from '../contexts/AuthContext';
 import type { IdentityMode, Profile } from '../lib/types';
 import {
   avatarSignedUrl,
+  suggestDisplayNames,
   updateMyProfile,
   updatePrivacySetting,
   uploadAvatar,
+  validateDisplayName,
 } from '../services/profile';
 import { fonts, radius, spacing } from '../theme';
 
@@ -41,6 +43,8 @@ function EditProfileForm({ profile }: { profile: Profile }) {
   const [interests, setInterests] = useState<string[]>(profile.interests ?? []);
   const [busy, setBusy] = useState(false);
   const [usernameErr, setUsernameErr] = useState('');
+  const [nameErr, setNameErr] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
 
   useEffect(() => {
     let live = true;
@@ -80,6 +84,28 @@ function EditProfileForm({ profile }: { profile: Profile }) {
       return;
     }
     setUsernameErr('');
+    const dname = displayName.trim();
+    if (dname) {
+      // الاسم المعروض ميتكررش — تحقق مسبق قبل الحفظ
+      setBusy(true);
+      const check = await validateDisplayName(dname, {
+        displayName: profile.display_name ?? null,
+        publicCode: profile.public_code ?? null,
+      });
+      setBusy(false);
+      if (!check.ok) {
+        if (check.reason === 'pattern') {
+          setNameErr('مينفعش الاسم يكون على شكل كود (زي A-1) — اختار اسم تاني');
+          setSuggestions([]);
+        } else {
+          setNameErr('الاسم ده مستخدم بالفعل، جرّب تضيف رقم أو رمز');
+          setSuggestions(check.suggestions ?? []);
+        }
+        return;
+      }
+      setSuggestions([]);
+    }
+    setNameErr('');
     setBusy(true);
     const res = await updateMyProfile(profile.id, {
       display_name: displayName.trim() || null,
@@ -89,8 +115,14 @@ function EditProfileForm({ profile }: { profile: Profile }) {
     });
     setBusy(false);
     if (!res.ok) {
-      if (res.taken) setUsernameErr(t('editProfile.usernameTaken'));
-      else appAlert(t('common.error'), t('common.error'));
+      if (res.taken) {
+        if (res.takenField === 'display_name') {
+          setNameErr('الاسم ده مستخدم بالفعل، جرّب تضيف رقم أو رمز');
+          setSuggestions(await suggestDisplayNames(dname));
+        } else {
+          setUsernameErr(t('editProfile.usernameTaken'));
+        }
+      } else appAlert(t('common.error'), t('common.error'));
       return;
     }
     await refreshProfile();
@@ -131,9 +163,31 @@ function EditProfileForm({ profile }: { profile: Profile }) {
         <NeonInput
           label={t('editProfile.displayName')}
           value={displayName}
-          onChangeText={setDisplayName}
+          onChangeText={(v) => {
+            setDisplayName(v);
+            setNameErr('');
+            setSuggestions([]);
+          }}
           maxLength={40}
+          error={nameErr}
         />
+        {suggestions.length > 0 ? (
+          <View style={styles.suggestRow}>
+            <Text style={styles.suggestLabel}>اقتراحات متاحة:</Text>
+            {suggestions.map((s) => (
+              <TouchableOpacity
+                key={s}
+                onPress={() => {
+                  setDisplayName(s);
+                  setSuggestions([]);
+                  setNameErr('');
+                }}
+                style={styles.suggestChip}>
+                <Text style={styles.suggestText}>{s}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
         <NeonInput
           label={t('editProfile.username')}
           value={username}
@@ -315,4 +369,26 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: 7,
   },
   interestChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  suggestRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    alignItems: 'center',
+    marginTop: -spacing.sm,
+    marginBottom: spacing.md,
+  },
+  suggestLabel: { color: colors.muted, fontSize: fonts.sizes.sm },
+  suggestChip: {
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: radius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: colors.glass,
+  },
+  suggestText: {
+    color: colors.primaryBright,
+    fontWeight: '700',
+    fontSize: fonts.sizes.sm,
+  },
 });

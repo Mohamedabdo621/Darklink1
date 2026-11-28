@@ -77,7 +77,7 @@ export default function ProfileVisitors() {
                 onPress={() =>
                   router.push({
                     pathname: '/user/[id]',
-                    params: { id: r.visitor.id },
+                    params: { id: r.visitor.public_code ?? r.visitor.id },
                   })
                 }>
                 <Avatar

@@ -215,12 +215,12 @@ export async function fetchFollowing(userId: string): Promise<FollowUser[]> {
 
 export async function findByUsername(
   username: string,
-): Promise<{ id: string; shown_name: string; username: string | null } | null> {
+): Promise<{ id: string; shown_name: string; username: string | null; public_code?: string | null } | null> {
   const { data, error } = await supabase.rpc('find_by_username', {
     p_username: username,
   });
   if (error || !data) return null;
-  return data as { id: string; shown_name: string; username: string | null };
+  return data as { id: string; shown_name: string; username: string | null; public_code?: string | null };
 }
 
 export async function reportPost(

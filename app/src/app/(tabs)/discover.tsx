@@ -17,7 +17,7 @@ import { TabSwipe } from '../../components/TabSwipe';
 import { INTEREST_KEYS } from '../../lib/interests';
 import type { PublicProfile } from '../../lib/types';
 import { avatarSignedUrl } from '../../services/profile';
-import { fetchDiscover, fetchPublicProfile } from '../../services/social';
+import { fetchDiscover, fetchPublicProfile, isPublicCode } from '../../services/social';
 import { fonts, radius, spacing } from '../../theme';
 
 import { useTheme } from '../../contexts/ThemeContext';
@@ -65,8 +65,9 @@ export default function Discover() {
     if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(async () => {
       const term = v.trim();
-      if (UUID_RE.test(term)) {
-        // بحث بالمعرف الدقيق: يعمل حتى لمن أوقف الظهور في الاكتشاف
+      if (UUID_RE.test(term) || isPublicCode(term)) {
+        // بحث بالمعرف الدقيق (UUID أو الكود العام A-1…): يعمل حتى لمن
+        // أوقف الظهور في الاكتشاف
         const one = await fetchPublicProfile(term);
         setItems(one ? [one] : []);
         setEnded(true);
@@ -178,7 +179,9 @@ function DiscoverCard({ item }: { item: PublicProfile }) {
   return (
     <TouchableOpacity
       style={styles.card}
-      onPress={() => router.push({ pathname: '/user/[id]', params: { id: item.id } })}>
+      onPress={() =>
+        router.push({ pathname: '/user/[id]', params: { id: item.public_code ?? item.id } })
+      }>
       <Avatar uri={avatar} name={item.shown_name} size={72} />
       <Text style={styles.cardName} numberOfLines={1}>
         {item.shown_name}

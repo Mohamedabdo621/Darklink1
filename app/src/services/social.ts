@@ -10,6 +10,13 @@ export interface ReceivedGiftSummary {
 
 const PAGE = 20;
 
+/** الكود العام للحساب: حروف-أرقام (A-1، B-27، AB-3…) — غير حساس لحالة الأحرف */
+export const PUBLIC_CODE_RE = /^[A-Za-z]+-\d+$/;
+
+export function isPublicCode(v: string): boolean {
+  return PUBLIC_CODE_RE.test(v.trim());
+}
+
 /** صفحة من نتائج الاكتشاف — تأتي من View آمنة لا تعرض بيانات حقيقية */
 export async function fetchDiscover(
   page: number,
@@ -29,9 +36,18 @@ export async function fetchDiscover(
   return (data ?? []) as PublicProfile[];
 }
 
-/** ملف آمن لمستخدم واحد عبر RPC — يعمل بالمعرف حتى لو غير قابل للاكتشاف */
+/** ملف آمن لمستخدم واحد عبر RPC — يعمل بالمعرف حتى لو غير قابل للاكتشاف.
+ *  يقبل الـ UUID أو الكود العام (A-1…) — الكود بيتطبيع لحروف كبيرة. */
 export async function fetchPublicProfile(userId: string): Promise<PublicProfile | null> {
-  const { data, error } = await supabase.rpc('get_public_profile', { target: userId });
+  const key = userId.trim();
+  if (isPublicCode(key)) {
+    const { data, error } = await supabase.rpc('get_public_profile_by_code', {
+      p_code: key.toUpperCase(),
+    });
+    if (error || !data) return null;
+    return data as PublicProfile;
+  }
+  const { data, error } = await supabase.rpc('get_public_profile', { target: key });
   if (error || !data) return null;
   return data as PublicProfile;
 }

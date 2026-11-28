@@ -18,8 +18,10 @@ import { useAuth } from '../contexts/AuthContext';
 import type { IdentityMode, Profile } from '../lib/types';
 import {
   avatarSignedUrl,
+  suggestDisplayNames,
   updateMyProfile,
   uploadAvatar,
+  validateDisplayName,
 } from '../services/profile';
 import { fonts, radius, spacing } from '../theme';
 
@@ -82,6 +84,7 @@ export default function CompleteProfile() {
   const [interests, setInterests] = useState<string[]>(profile?.interests ?? []);
   const [avatar, setAvatar] = useState<string | null>(null);
   const [nameErr, setNameErr] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [birthErr, setBirthErr] = useState('');
   const [underage, setUnderage] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -122,10 +125,10 @@ export default function CompleteProfile() {
     );
   };
 
-  const next = () => {
+  const next = async () => {
     if (step === 0) {
+      const name = displayName.trim();
       if (mode === 'public') {
-        const name = displayName.trim();
         if (!name) {
           setNameErr(t('completeProfile.nameRequired'));
           return;
@@ -134,6 +137,26 @@ export default function CompleteProfile() {
           setNameErr(t('completeProfile.nameShort'));
           return;
         }
+      }
+      if (name) {
+        // الاسم ميتكررش: تحقق مسبق قبل ما نكمل الخطوات (حتى لو الوضع
+        // مجهول — الاسم بيتحفظ برضه). اسم على شكل كود مرفوض إلا لو
+        // هو كود المستخدم نفسه (مثال: أليكس اسمه A-1 وهو كوده).
+        const check = await validateDisplayName(name, {
+          displayName: profile?.display_name ?? null,
+          publicCode: profile?.public_code ?? null,
+        });
+        if (!check.ok) {
+          if (check.reason === 'pattern') {
+            setNameErr('مينفعش الاسم يكون على شكل كود (زي A-1) — اختار اسم تاني');
+            setSuggestions([]);
+          } else {
+            setNameErr('الاسم ده مستخدم بالفعل، جرّب تضيف رقم أو رمز');
+            setSuggestions(check.suggestions ?? []);
+          }
+          return;
+        }
+        setSuggestions([]);
       }
       setNameErr('');
       setStep(1);
@@ -182,6 +205,13 @@ export default function CompleteProfile() {
     const res = await updateMyProfile(profile.id, fields);
     setBusy(false);
     if (!res.ok) {
+      if (res.taken) {
+        // سباق: الاسم اتاخد بعد التحقق المسبق — نرجع لخطوة الاسم
+        setStep(0);
+        setNameErr('الاسم ده مستخدم بالفعل، جرّب تضيف رقم أو رمز');
+        setSuggestions(await suggestDisplayNames(displayName.trim()));
+        return;
+      }
       appAlert(t('common.error'), t('common.error'));
       return;
     }
@@ -327,11 +357,29 @@ export default function CompleteProfile() {
               onChangeText={(v) => {
                 setDisplayName(v);
                 setNameErr('');
+                setSuggestions([]);
               }}
               maxLength={30}
               error={nameErr}
               placeholder={profile.anonymous_alias}
             />
+            {suggestions.length > 0 ? (
+              <View style={styles.suggestRow}>
+                <Text style={styles.suggestLabel}>اقتراحات متاحة:</Text>
+                {suggestions.map((s) => (
+                  <TouchableOpacity
+                    key={s}
+                    onPress={() => {
+                      setDisplayName(s);
+                      setSuggestions([]);
+                      setNameErr('');
+                    }}
+                    style={styles.suggestChip}>
+                    <Text style={styles.suggestText}>{s}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
             <Text style={styles.hint}>
               {mode === 'public'
                 ? t('completeProfile.displayNameHintPublic')
@@ -600,4 +648,26 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     marginTop: spacing.sm,
   },
   backBtn: { alignItems: 'center', paddingVertical: spacing.md },
+  suggestRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    alignItems: 'center',
+    marginTop: -spacing.sm,
+    marginBottom: spacing.md,
+  },
+  suggestLabel: { color: colors.muted, fontSize: fonts.sizes.sm },
+  suggestChip: {
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: radius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: colors.glass,
+  },
+  suggestText: {
+    color: colors.primaryBright,
+    fontWeight: '700',
+    fontSize: fonts.sizes.sm,
+  },
 });

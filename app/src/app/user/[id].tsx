@@ -45,27 +45,32 @@ export default function UserProfile() {
 
   const load = useCallback(async () => {
     if (!id || !me) return;
-    const [u, g, b] = await Promise.all([
-      fetchPublicProfile(id),
-      fetchReceivedGifts(id),
-      isBlockedByMe(me.id, id),
+    // الـ id ممكن يكون الكود العام (A-1…) أو UUID قديم — الملف بيرجع
+    // الـ UUID الداخلي، وباقي الطلبات (هدايا/مستوى/حظر/زيارة) بتستخدمه.
+    const u = await fetchPublicProfile(id);
+    if (!u) {
+      setUser(null);
+      setLoaded(true);
+      return;
+    }
+    const [g, b] = await Promise.all([
+      fetchReceivedGifts(u.id),
+      isBlockedByMe(me.id, u.id),
     ]);
     setUser(u);
     setGifts(g);
     setBlocked(b);
-    setLevel(await fetchUserLevel(id));
-    if (u) {
-      setAvatar(await avatarSignedUrl(u.avatar_url));
-      recordProfileVisit(id);
-      if (u.last_seen_at) {
-        const seen = new Date(u.last_seen_at);
-        setSeenText(
-          Date.now() - seen.getTime() < 90000
-            ? `● ${t('chat.online')}`
-            : `${t('chat.lastSeen')} ${formatTimeAr(seen)}`,
-        );
-      } else setSeenText(null);
-    }
+    setLevel(await fetchUserLevel(u.id));
+    setAvatar(await avatarSignedUrl(u.avatar_url));
+    recordProfileVisit(u.id);
+    if (u.last_seen_at) {
+      const seen = new Date(u.last_seen_at);
+      setSeenText(
+        Date.now() - seen.getTime() < 90000
+          ? `● ${t('chat.online')}`
+          : `${t('chat.lastSeen')} ${formatTimeAr(seen)}`,
+      );
+    } else setSeenText(null);
     setLoaded(true);
   }, [id, me, t]);
 
@@ -195,12 +200,12 @@ export default function UserProfile() {
           ) : null}
         </View>
 
-        {/* معرف الحساب العام (14 رقم) — بيظهر بعد تطبيق هجرة v1.6.0 */}
-        {user.public_id ? (
+        {/* الكود العام للحساب (A-1…) — دوسة بتنسخه */}
+        {user.public_code ? (
           <TouchableOpacity
             style={styles.accountIdRow}
             onPress={async () => {
-              await Clipboard.setStringAsync(String(user.public_id));
+              await Clipboard.setStringAsync(user.public_code as string);
               appAlert('✓', t('profile.accountIdCopied'));
             }}>
             <Text style={{ color: colors.muted, fontSize: fonts.sizes.sm }}>
@@ -218,7 +223,7 @@ export default function UserProfile() {
                   fontSize: fonts.sizes.sm,
                   fontFamily: 'monospace',
                 }}>
-                {String(user.public_id)}
+                {user.public_code}
               </Text>
               <Ionicons name="copy-outline" size={14} color={colors.muted} />
             </View>

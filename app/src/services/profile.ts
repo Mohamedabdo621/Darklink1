@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { Profile } from '../lib/types';
+import { PUBLIC_CODE_RE } from './social';
 
 export async function fetchMyProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
@@ -32,18 +33,83 @@ export async function fetchMyProfileResult(
   return { profile: data as Profile, error: false };
 }
 
-/** تحديث حقول محددة فقط — تغيير حقل لا يمس أي إعداد خصوصية آخر */
+/** تحديث حقول محددة فقط — تغيير حقل لا يمس أي إعداد خصوصية آخر.
+ *  لو فشل بسبب قيد تميّز (23505) بيرجع الحقل المتعارض: الاسم المعروض
+ *  (profiles_display_name_lower_uidx) أو اليوزر (profiles_username_key). */
 export async function updateMyProfile(
   userId: string,
   fields: Partial<Profile>,
-): Promise<{ ok: boolean; taken?: boolean }> {
+): Promise<{ ok: boolean; taken?: boolean; takenField?: 'display_name' | 'username' }> {
   const { error } = await supabase
     .from('profiles')
     .update(fields)
     .eq('id', userId);
   if (error) {
-    if (error.code === '23505') return { ok: false, taken: true };
+    if (error.code === '23505') {
+      const msg = (error as { message?: string }).message ?? '';
+      return {
+        ok: false,
+        taken: true,
+        takenField: msg.includes('display_name') ? 'display_name' : 'username',
+      };
+    }
     return { ok: false };
+  }
+  return { ok: true };
+}
+
+/** هل الاسم المعروض متاح؟ (غير اسم المستخدم نفسه — الـ RPC بيستثنيه) */
+export async function isDisplayNameAvailable(name: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('is_display_name_available', {
+    p_name: name.trim(),
+  });
+  if (error) return false;
+  return data === true;
+}
+
+/** اقتراحات بديلة متاحة (الاسم + رقم) — بيتحقق من كل اقتراح قبل عرضه */
+export async function suggestDisplayNames(name: string): Promise<string[]> {
+  const base = name.trim().slice(0, 27);
+  if (!base) return [];
+  const out: string[] = [];
+  for (let tries = 0; tries < 8 && out.length < 3; tries += 1) {
+    const n = 100 + Math.floor(Math.random() * 900);
+    const cand = tries % 2 === 0 ? `${base}${n}` : `${base}_${n}`;
+    if (out.includes(cand)) continue;
+    if (await isDisplayNameAvailable(cand)) out.push(cand);
+  }
+  return out;
+}
+
+export type DisplayNameCheck =
+  | { ok: true }
+  | { ok: false; reason: 'pattern' | 'taken'; suggestions?: string[] };
+
+/** تحقق كامل من الاسم المعروض قبل الحفظ:
+ *  - الاسم زي ما هو (من غير تغيير) مقبول دايمًا.
+ *  - اسم على شكل كود (A-1…) مرفوض إلا لو هو كود المستخدم نفسه.
+ *  - الاسم المتاخد مرفوض مع اقتراحات بديلة (اسم+رقم). */
+export async function validateDisplayName(
+  name: string,
+  own: { displayName?: string | null; publicCode?: string | null },
+): Promise<DisplayNameCheck> {
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: true };
+  if (own.displayName && trimmed.toLowerCase() === own.displayName.toLowerCase()) {
+    return { ok: true };
+  }
+  if (
+    PUBLIC_CODE_RE.test(trimmed) &&
+    (!own.publicCode || trimmed.toLowerCase() !== own.publicCode.toLowerCase())
+  ) {
+    return { ok: false, reason: 'pattern' };
+  }
+  if (!(await isDisplayNameAvailable(trimmed))) {
+    return {
+      ok: false,
+      reason: 'taken',
+      suggestions: await suggestDisplayNames(trimmed),
+    };
   }
   return { ok: true };
 }

@@ -79,7 +79,10 @@ export default function Leaderboard() {
               key={r.user_id}
               style={styles.row}
               onPress={() =>
-                router.push({ pathname: '/user/[id]', params: { id: r.user_id } })
+                router.push({
+                  pathname: '/user/[id]',
+                  params: { id: r.profile?.public_code ?? r.user_id },
+                })
               }>
               <Text style={styles.rank}>{medals[i] ?? `${i + 1}`}</Text>
               <Avatar

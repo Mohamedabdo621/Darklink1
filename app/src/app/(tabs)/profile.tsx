@@ -172,12 +172,12 @@ export default function ProfileTab() {
         <GlowCard style={{ marginTop: spacing.lg }}>
           <InfoRow
             label={t('profile.accountId')}
-            value={profile.public_id ? String(profile.public_id) : '—'}
+            value={profile.public_code ?? '—'}
             mono
             onCopy={
-              profile.public_id
+              profile.public_code
                 ? async () => {
-                    await Clipboard.setStringAsync(String(profile.public_id));
+                    await Clipboard.setStringAsync(profile.public_code as string);
                     appAlert('✓', t('profile.accountIdCopied'));
                   }
                 : undefined
