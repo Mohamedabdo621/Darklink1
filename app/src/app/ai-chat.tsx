@@ -5,13 +5,15 @@
 // فقاعات المستخدم: تدرج بنفسجي غامق→فوشيا + نص أبيض (لا فقاعات
 // فاتحة/شفافة — اترفضت مرتين). رسائل المساعد: زجاجية.
 // لا BlurView هنا أصلًا (بيحجب اللمس والنص) — زجاج عادي فقط.
-// الأفاتار هو صورة Nova (darklink-ai-avatar.png) — اترفعت لـ GitHub
-// في commit 709c126. شكل الأفاتار المتحرك (GIF) معاينات بس لحد
-// ما Alex يوافق عليها، وبعدها تتوصل هنا بدل الصورة الثابتة.
+// الأفاتار هو Nova المتحرك (GIF شفاف، 100 فريم) — السبعة في
+// assets/nova-*.gif: greeting للترحيب، idle للهيدر وجنب رسايل
+// المساعد، thinking بدل مؤشر النقاط، error لحالة الفشل،
+// وanswering/celebrate/dontknow محجوزين لمحفزات جاية (مش
+// متوصلين لسلوك ظاهر لسه). الصورة الثابتة
+// darklink-ai-avatar.png لسه موجودة كبديل احتياطي.
 // ============================================================
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animated,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -54,6 +56,21 @@ interface AiConversation {
 const MAX_INPUT = 2000;
 const DEFAULT_DAILY_LIMIT = 30;
 
+/** Nova GIFs المتحركة (شفافة، 100 فريم، 20ms للفريم) — كل الأفاتار من هنا.
+ *  greeting = شاشة الترحيب، idle = الهيدر وجنب رسايل المساعد،
+ *  thinking = بدل مؤشر النقاط أثناء انتظار الرد، error = حالة الفشل.
+ *  answering/celebrate/dontknow محجوزين لمحفزات جاية — متوصلين
+ *  هنا بس، ومش مربوطين بأي سلوك ظاهر لسه. */
+const NOVA_GIFS = {
+  idle: require('../../assets/nova-idle.gif'),
+  thinking: require('../../assets/nova-thinking.gif'),
+  answering: require('../../assets/nova-answering.gif'),
+  celebrate: require('../../assets/nova-celebrate.gif'),
+  dontknow: require('../../assets/nova-dontknow.gif'),
+  error: require('../../assets/nova-error.gif'),
+  greeting: require('../../assets/nova-greeting.gif'),
+} as const;
+
 function makeRequestId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -76,33 +93,6 @@ function fmtDate(iso: string): string {
   } catch {
     return '';
   }
-}
-
-/** 3 نقاط متحركة — مؤشر "بيكتب…" (مش Spinner ميت) */
-function ThinkingDots({ color }: { color: string }) {
-  const [a] = useState(() => new Animated.Value(0.25));
-  const [b] = useState(() => new Animated.Value(0.25));
-  const [c] = useState(() => new Animated.Value(0.25));
-  useEffect(() => {
-    const make = (v: Animated.Value, delay: number) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(v, { toValue: 1, duration: 350, useNativeDriver: true }),
-          Animated.timing(v, { toValue: 0.25, duration: 350, useNativeDriver: true }),
-        ]),
-      );
-    const loops = [make(a, 0), make(b, 180), make(c, 360)];
-    loops.forEach((l) => l.start());
-    return () => loops.forEach((l) => l.stop());
-  }, [a, b, c]);
-  const dots = [a, b, c].map((v, i) => (
-    <Animated.View
-      key={i}
-      style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color, opacity: v }}
-    />
-  ));
-  return <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center' }}>{dots}</View>;
 }
 
 export default function AiChat() {
@@ -339,7 +329,7 @@ export default function AiChat() {
       }
       return (
         <View style={[styles.msgRow, styles.msgRowAi]}>
-          <Image source={require('../../assets/darklink-ai-avatar.png')} style={styles.aiMiniAvatar} />
+          <Image source={NOVA_GIFS.idle} style={styles.aiMiniAvatar} />
           <View style={[styles.aiBubble, { flexShrink: 1 }]}>
             <Text style={styles.aiLabel}>Darklink AI</Text>
             <Markdown style={mdStyle}>{item.content}</Markdown>
@@ -371,7 +361,7 @@ export default function AiChat() {
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Image source={require('../../assets/darklink-ai-avatar.png')} style={styles.headerAvatar} />
+            <Image source={NOVA_GIFS.idle} style={styles.headerAvatar} />
             <View>
               <Text style={styles.headerTitle}>Darklink AI</Text>
               <Text style={styles.headerStatus}>● {t('ai.online')}</Text>
@@ -435,7 +425,7 @@ export default function AiChat() {
             contentContainerStyle={styles.welcomeWrap}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled">
-            <Image source={require('../../assets/darklink-ai-avatar.png')} style={styles.welcomeAvatar} />
+            <Image source={NOVA_GIFS.greeting} style={styles.welcomeAvatar} />
             <Text style={styles.welcomeTitle}>{t('ai.welcomeTitle')}</Text>
             <Text style={styles.welcomeBody}>{t('ai.welcomeBody')}</Text>
             <View style={styles.chips}>
@@ -458,9 +448,9 @@ export default function AiChat() {
             ListHeaderComponent={
               thinking ? (
                 <View style={[styles.msgRow, styles.msgRowAi]}>
-                  <Image source={require('../../assets/darklink-ai-avatar.png')} style={styles.aiMiniAvatar} />
+                  <Image source={NOVA_GIFS.idle} style={styles.aiMiniAvatar} />
                   <View style={styles.aiBubble}>
-                    <ThinkingDots color={colors.primaryBright} />
+                    <Image source={NOVA_GIFS.thinking} style={styles.thinkingGif} />
                   </View>
                 </View>
               ) : undefined
@@ -472,6 +462,7 @@ export default function AiChat() {
           <View style={styles.composerWrap}>
             {inlineError ? (
               <View style={styles.errorBubble}>
+                <Image source={NOVA_GIFS.error} style={styles.errorGif} />
                 <Text style={styles.errorText}>{inlineError}</Text>
               </View>
             ) : null}
@@ -536,7 +527,7 @@ const makeStyles = (colors: ThemeColors) =>
     },
     headerBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
     headerCenter: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1, justifyContent: 'center' },
-    headerAvatar: { width: 40, height: 40, borderRadius: 20 },
+    headerAvatar: { width: 40, height: 40 },
     headerTitle: { color: colors.text, fontSize: fonts.sizes.lg, fontWeight: fonts.weights.bold },
     headerStatus: { color: colors.success, fontSize: fonts.sizes.xs, fontWeight: fonts.weights.bold },
     headerActions: { flexDirection: 'row', alignItems: 'center' },
@@ -568,7 +559,7 @@ const makeStyles = (colors: ThemeColors) =>
       paddingHorizontal: spacing.lg,
       paddingBottom: 40,
     },
-    welcomeAvatar: { width: 140, height: 140, borderRadius: 70, marginBottom: spacing.lg },
+    welcomeAvatar: { width: 140, height: 140, marginBottom: spacing.lg },
     welcomeTitle: {
       color: colors.text,
       fontSize: fonts.sizes.xl,
@@ -604,7 +595,8 @@ const makeStyles = (colors: ThemeColors) =>
     },
     userText: { color: colors.white, fontSize: fonts.sizes.md, lineHeight: 22 },
     userTime: { color: 'rgba(255,255,255,0.75)', fontSize: fonts.sizes.xs, marginTop: 4, textAlign: 'right' },
-    aiMiniAvatar: { width: 30, height: 30, borderRadius: 15, marginEnd: spacing.sm },
+    aiMiniAvatar: { width: 30, height: 30, marginEnd: spacing.sm },
+    thinkingGif: { width: 56, height: 56 },
     aiBubble: {
       maxWidth: '80%',
       backgroundColor: colors.glass,
@@ -625,7 +617,9 @@ const makeStyles = (colors: ThemeColors) =>
       borderRadius: radius.md,
       padding: spacing.sm,
       marginBottom: spacing.sm,
+      alignItems: 'center',
     },
+    errorGif: { width: 56, height: 56, marginBottom: spacing.xs },
     errorText: { color: colors.white, fontSize: fonts.sizes.sm, textAlign: 'center' },
     remaining: { color: colors.faint, fontSize: fonts.sizes.xs, textAlign: 'center', marginBottom: spacing.xs },
     composer: {
