@@ -14,6 +14,10 @@
 // thinking وerror بيتحملوا مسبقًا من أول ما الشاشة تتفتح (صورتين
 // مخفيتين 1×1) — لأنهم بيتركبوا بس لما يُحتاجوا، والملف ~1.9MB
 // مكانش بيلحق يتحمل قبل ما فقاعة الانتظار تختفي.
+// رسايل المساعد بتعدّي على isolateLtrRuns قبل الماركداون — الروابط
+// والمعرّفات (@...) بتتغلّف بعلامات LRI/PDI عشان خوارزمية الاتجاه
+// ماتعكسهاش جوه العربي (كانت «@darklink.app» بتظهر «darklink.app@»
+// واللينك بيظهر بسلاش في الأول ومقطوع على الموبايل).
 // ============================================================
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -96,6 +100,25 @@ function fmtDate(iso: string): string {
   } catch {
     return '';
   }
+}
+
+// عزل المقاطع اللاتينية (روابط bare + معرّفات @) داخل النص العربي
+// بعلامات LRI/PDI ‏(U+2066…U+2069)‏ — من غيرها خوارزمية الاتجاه
+// بتعكس ترتيبها على الشاشة. العلامات بتغلّف الحروف نفسها بس،
+// وعلامات الماركداون (**) بتفضل برّه العزل؛ وروابط الماركداون
+// [نص](رابط) مش بيتلمس اللي جوّا الأقواس لأنه الـ href مش نص ظاهر —
+// ولو اتغلّف هيتكسر لما يتداس عليه. النسخ بياخد النص الأصلي من غير علامات.
+const LRI = '\u2066';
+const PDI = '\u2069';
+
+function isolateLtrRuns(text: string): string {
+  return text.replace(
+    /\[([^\]]*)\]\(([^)]+)\)|(https?:\/\/[^\s)>\]]+)|(@[A-Za-z0-9._-]+)/g,
+    (match: string, _label: string | undefined, href: string | undefined, url: string | undefined, handle: string | undefined) => {
+      if (href !== undefined) return match; // رابط ماركداون — سيبه زي ما هو
+      return `${LRI}${url ?? handle ?? ''}${PDI}`;
+    },
+  );
 }
 
 export default function AiChat() {
@@ -335,7 +358,7 @@ export default function AiChat() {
           <Image source={NOVA_GIFS.idle} style={styles.aiMiniAvatar} />
           <View style={[styles.aiBubble, { flexShrink: 1 }]}>
             <Text style={styles.aiLabel}>Darklink AI</Text>
-            <Markdown style={mdStyle}>{item.content}</Markdown>
+            <Markdown style={mdStyle}>{isolateLtrRuns(item.content)}</Markdown>
             <View style={styles.aiMeta}>
               <Text style={styles.aiTime}>{fmtTime(item.created_at)}</Text>
               <TouchableOpacity onPress={() => copyMessage(item)} hitSlop={8}>
