@@ -7,10 +7,35 @@ import React, {
   useState,
 } from 'react';
 import type { Session } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import type { Profile } from '../lib/types';
 import { fetchMyProfileResult } from '../services/profile';
 import { registerPushToken, unregisterPushToken } from '../services/push';
+
+/** آخر ملف معروف للمستخدم، محفوظ محليًا — احتياطي لبوابة إكمال
+ *  البيانات: لو جلب الملف فشل/اتأخر، البوابة بتستخدم تاريخ الميلاد
+ *  المحفوظ هنا بدل ما تحوّل المستخدم لصفحة إكمال البيانات كل مرة. */
+export const CACHED_PROFILE_KEY = 'darklink:cached-profile';
+
+export async function getCachedProfile(): Promise<Profile | null> {
+  try {
+    const raw = await AsyncStorage.getItem(CACHED_PROFILE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as Profile;
+  } catch {
+    return null;
+  }
+}
+
+async function cacheProfile(p: Profile | null): Promise<void> {
+  try {
+    if (p) await AsyncStorage.setItem(CACHED_PROFILE_KEY, JSON.stringify(p));
+    else await AsyncStorage.removeItem(CACHED_PROFILE_KEY);
+  } catch {
+    // التخزين المحلي فشل — مش حاجب؛ الجلب من السيرفر هو الأساس.
+  }
+}
 
 interface AuthState {
   session: Session | null;
@@ -46,6 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!userId) {
       setProfile(null);
       setProfileError(false);
+      void cacheProfile(null);
       return;
     }
     const { profile: p, error } = await fetchMyProfileResult(userId);
@@ -61,6 +87,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     setProfile(p);
+    // احفظ آخر نسخة ناجحة — احتياطي لبوابة إكمال البيانات.
+    void cacheProfile(p);
     registerPushToken(userId);
   }, []);
 
@@ -89,6 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfileError(error);
     if (error) return false;
     setProfile(p);
+    void cacheProfile(p);
     return true;
   }, []);
 
@@ -113,6 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
     setProfile(null);
     setSession(null);
+    void cacheProfile(null);
   }, []);
 
   return (

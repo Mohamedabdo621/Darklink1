@@ -1,5 +1,6 @@
-import React, { forwardRef, useMemo } from 'react';
+import React, { forwardRef, useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Redirect } from 'expo-router';
 import { Tabs, TabList, TabTrigger, TabSlot } from 'expo-router/ui';
 import type { TabTriggerSlotProps } from 'expo-router/ui';
@@ -7,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth, getCachedProfile } from '../../contexts/AuthContext';
 import { NeonButton } from '../../components/ui';
 import { fonts, gradients, radius, spacing } from '../../theme';
 
@@ -64,10 +65,33 @@ const TabButton = forwardRef<
 
 export default function TabsLayout() {
   const { colors } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { session, profile, loading, profileError, refreshProfile, signOut } =
     useAuth();
+  // مسافة أمان سفلية على الموبايل — الشريط كان قاعد على حافة الشاشة
+  // وبيتداخل مع شريط إيماءات أندرويد.
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(
+    () => makeStyles(colors, Platform.OS === 'web' ? 0 : insets.bottom),
+    [colors, insets.bottom],
+  );
+  // تاريخ الميلاد المحفوظ محليًا من آخر جلب ناجح — احتياطي للبوابة
+  // (نفس المنطق في src/app/index.tsx): لو الجلب الحالي فشل/اتأخر
+  // والنسخة المحفوظة فيها تاريخ ميلاد، مفيش تحويل لصفحة إكمال البيانات.
+  const [cachedBirthdate, setCachedBirthdate] = useState<string | null>(null);
+  const [cacheReady, setCacheReady] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    getCachedProfile().then((p) => {
+      if (!live) return;
+      setCachedBirthdate(p?.birthdate ?? null);
+      setCacheReady(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
   // الجلب فشل (شبكة/قاعدة) — شاشة إعادة محاولة بدل التحويل لصفحة
   // إكمال البيانات (بتغطي كمان الدخول من لينك تأكيد الإيميل).
   if (!loading && session && profileError) {
@@ -96,8 +120,9 @@ export default function TabsLayout() {
     );
   }
   // ملفه ناقص تاريخ الميلاد → صفحة إكمال البيانات (بتغطي كمان الدخول من لينك تأكيد الإيميل)
-  // — بس لما الجلب يكون نجح (profile موجود من غير birthdate، أو مفيش صف من غير خطأ).
-  if (!loading && session && !profile?.birthdate) {
+  // — بس لما الجلب يكون نجح (profile موجود من غير birthdate، أو مفيش صف من غير خطأ)،
+  // ولو النسخة المحفوظة محليًا فيها تاريخ ميلاد، مفيش تحويل أصلًا.
+  if (!loading && cacheReady && session && !profile?.birthdate && !cachedBirthdate) {
     return <Redirect href="/complete-profile" />;
   }
   return (
@@ -122,7 +147,7 @@ export default function TabsLayout() {
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+const makeStyles = (colors: ThemeColors, bottomInset = 0) => StyleSheet.create({
   /** شريط زجاجي مستدير عايم — زي الصورة المرجعية */
   bar: {
     flexDirection: 'row',
@@ -131,7 +156,9 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     borderColor: colors.glassBorderStrong,
     borderRadius: radius.full,
     marginHorizontal: spacing.md,
-    marginBottom: spacing.sm,
+    // على الموبايل: الشريط بيعوم فوق شريط إيماءات أندرويد بمسافة
+    // الأمان السفلية؛ على الويب الـ inset صفر وبيفضل زي ما هو.
+    marginBottom: spacing.sm + bottomInset,
     height: 62,
     paddingBottom: 8,
     paddingTop: 6,

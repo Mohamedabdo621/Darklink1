@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { appAlert } from '../lib/dialog';
@@ -56,6 +56,24 @@ export default function Store() {
   });
   const [busyId, setBusyId] = useState<string | null>(null);
   const [previewGift, setPreviewGift] = useState<Gift | null>(null);
+  // «الـ VIP مفعّل» تُحسب في تأثير جانبي (تاريخ الانتهاء لسه في
+  // المستقبل) — مش أثناء الرندر، عشان Date.now() دالة غير نقية.
+  // بتتحدّث كل دقيقة عشان الأزرار ترجع لوحدها بعد انتهاء الاشتراك.
+  const [vipActive, setVipActive] = useState(false);
+  useEffect(() => {
+    const calc = () =>
+      setVipActive(
+        !!me?.is_vip &&
+          !!me?.vip_until &&
+          new Date(me.vip_until).getTime() > Date.now(),
+      );
+    calc();
+    const iv = setInterval(calc, 60000);
+    return () => clearInterval(iv);
+  }, [me?.is_vip, me?.vip_until]);
+  /** حارس ضد الضغط المزدوج على شراء VIP (الـ RPC نفسه بقى بيمنع
+   *  الشراء المكرر، بس ده بيمنع حتى فتح نافذتي تأكيد). */
+  const vipBuyingRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!me) return;
@@ -101,6 +119,8 @@ export default function Store() {
   };
 
   const buyVipTier = (tier: 'silver' | 'gold') => {
+    // دفاع إضافي: مفيش شراء والـ VIP مفعّل، ولا طلب تاني أثناء طلب جارٍ.
+    if (vipActive || vipBuyingRef.current || busyId) return;
     const price = tier === 'silver' ? vipPrices.silver : vipPrices.gold;
     appAlert(
       tier === 'silver' ? `🥈 ${t('store.vipSilver')}` : `👑 ${t('store.vipGold')}`,
@@ -110,17 +130,27 @@ export default function Store() {
         {
           text: t('store.vipActivate'),
           onPress: async () => {
+            if (vipBuyingRef.current) return;
+            vipBuyingRef.current = true;
             setBusyId(`vip-${tier}`);
-            const res = await activateVipTier(tier);
-            setBusyId(null);
-            if (res.ok) {
-              setBalance((b) => Math.max(0, b - price));
-              await refreshProfile();
-              appAlert('👑', t('store.vipSuccess'));
-            } else if (res.error?.includes('insufficient_balance')) {
-              appAlert(t('common.error'), t('store.insufficient'));
-            } else {
-              appAlert(t('common.error'), res.error ?? t('common.error'));
+            try {
+              const res = await activateVipTier(tier);
+              if (res.ok) {
+                setBalance((b) => Math.max(0, b - price));
+                await refreshProfile();
+                appAlert('👑', t('store.vipSuccess'));
+              } else if (res.error?.includes('vip_already_active')) {
+                // الـ RPC رفض: الاشتراك مفعّل بالفعل (مثلًا اتفعّل من جهاز تاني).
+                await refreshProfile();
+                appAlert(t('common.error'), 'الـ VIP مفعّل عندك بالفعل');
+              } else if (res.error?.includes('insufficient_balance')) {
+                appAlert(t('common.error'), t('store.insufficient'));
+              } else {
+                appAlert(t('common.error'), res.error ?? t('common.error'));
+              }
+            } finally {
+              vipBuyingRef.current = false;
+              setBusyId(null);
             }
           },
         },
@@ -162,7 +192,7 @@ export default function Store() {
           <Text style={{ color: colors.text, fontSize: fonts.sizes.md, lineHeight: 22 }}>
             {t('store.vipDesc')}
           </Text>
-          {me.is_vip && me.vip_until ? (
+          {vipActive && me.vip_until ? (
             <Text style={{ color: colors.gold, marginTop: spacing.sm, fontWeight: '700' }}>
               {me.vip_tier === 'silver' ? '🥈' : '👑'}{' '}
               {t('store.vipActive', {
@@ -170,7 +200,8 @@ export default function Store() {
               })}
             </Text>
           ) : null}
-          <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.md }}>
+          {!vipActive ? (
+            <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.md }}>
             <View style={{ flex: 1, gap: spacing.sm }}>
               <Text style={{ color: colors.text, fontWeight: '700' }}>
                 🥈 {t('store.vipSilver')}
@@ -199,6 +230,7 @@ export default function Store() {
               />
             </View>
           </View>
+          ) : null}
         </GlowCard>
 
         <Text style={styles.section}>{t('store.giftsCatalog')}</Text>

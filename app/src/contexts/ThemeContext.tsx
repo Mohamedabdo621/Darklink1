@@ -27,6 +27,10 @@ import { useAuth } from './AuthContext';
 const THEME_STORAGE_KEY = 'darklink:theme-preference';
 const FONT_STORAGE_KEY = 'darklink:font-size';
 export const WALLPAPER_KEY = 'darklink:chat-wallpaper';
+// مرة واحدة: خلفية الشات القديمة كانت ممكن تفضل محبوسة على 'dark' فالشات
+// يفضل غامق حتى في الوضع الفاتح — أول تحميل بعد التحديث بيرجّعها
+// للافتراضي (حسب الثيم) وبيعلّم إنه اتعملت عشان متتكررش.
+const WALLPAPER_MIGRATION_KEY = 'darklink:wallpaper-v2-migrated';
 
 export type FontSize = 'small' | 'medium' | 'large';
 /** خلفية الشات: افتراضي (حسب الثيم) / صورة فاتحة / صورة غامقة / من غير صورة */
@@ -114,6 +118,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // تحميل الاختيار المحفوظ (أولوية للمحلي، ثم بروفايل المستخدم)
   useEffect(() => {
     (async () => {
+      // ترحيل خلفية الشات لمرة واحدة — آمن: أي فشل بيتجاهل بصمت.
+      try {
+        const migrated = await AsyncStorage.getItem(WALLPAPER_MIGRATION_KEY);
+        if (!migrated) {
+          await AsyncStorage.setItem(WALLPAPER_KEY, 'default');
+          await AsyncStorage.setItem(WALLPAPER_MIGRATION_KEY, '1');
+        }
+      } catch {
+        // تجاهل — الخلفية الافتراضية هتتطبق
+      }
       try {
         const stored = await AsyncStorage.getItem(THEME_STORAGE_KEY);
         if (isThemeMode(stored)) {

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { Animated, FlatList, Image, Keyboard, Linking, Modal, Platform, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, FlatList, I18nManager, Image, Keyboard, Linking, Modal, Platform, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
@@ -79,8 +79,9 @@ interface GiftInfo {
 }
 
 /** عتبات السحب المرنة للتسجيل الصوتي (واتساب: أي سحب واضح + إفلات = إلغاء/قفل،
- *  مش لازم توصل لمكان معين) */
-const REC_CANCEL_DX = -60;
+ *  مش لازم توصل لمكان معين) — قيمة موجبة (مقدار السحب) والاتجاه بيتحدد
+ *  من isRTL تحت: في العربي المايك على الشمال فالإلغاء سحب لليمين */
+const REC_CANCEL_DX = 60;
 const REC_LOCK_DY = -60;
 /** مدة الضغطة المطوّلة على زرار الإيموجي قبل ما الشريط يفتح */
 const EMOJI_LONG_PRESS_MS = 500;
@@ -273,6 +274,13 @@ export default function ChatScreen() {
   });
   const recState = useAudioRecorderState(recorder, 500);
   const [phase, setPhase] = useState<'idle' | 'recording' | 'tap'>('idle');
+  /** اتجاه الواجهة الحالي — الإلغاء بالسحب بيتعكس معاه (شوف isCancelDx) */
+  const isRTL = I18nManager.isRTL;
+  /** السحب وصل حد الإلغاء؟ يمين في العربي (المايك شمال) وشمال في الإنجليزي */
+  const isCancelDx = (dx: number) =>
+    isRTL ? dx >= REC_CANCEL_DX : dx <= -REC_CANCEL_DX;
+  /** تلميح عابر لما التسجيل يتلغي عشان قصير أوي (أقل من ثانية) */
+  const [shortRecHint, setShortRecHint] = useState(false);
   /** موضع الإصبع أثناء سحب التسجيل — SharedValue مش state: كل حركة
    *  إصبع كانت بتعيد رسم الشاشة كلها (سبب التهنيج أثناء السحب).
    *  الـ state بيتحدث بس لما نعبر حد الإلغاء/القفل. */
@@ -280,7 +288,7 @@ export default function ChatScreen() {
   const [recZone, setRecZone] = useState<'none' | 'cancel' | 'lock'>('none');
   const recZoneRef = useRef<'none' | 'cancel' | 'lock'>('none');
   const recZoneOf = (dx: number, dy: number): 'none' | 'cancel' | 'lock' =>
-    dx <= REC_CANCEL_DX ? 'cancel' : dy <= REC_LOCK_DY ? 'lock' : 'none';
+    isCancelDx(dx) ? 'cancel' : dy <= REC_LOCK_DY ? 'lock' : 'none';
   const updateRecZone = (dx: number, dy: number) => {
     const z = recZoneOf(dx, dy);
     if (z !== recZoneRef.current) {
@@ -293,9 +301,11 @@ export default function ChatScreen() {
   // إعادة رسم — السحب يمشي على 60 إطار من غير تهنيج
   const trashAnimStyle = useAnimatedStyle(() => {
     const dx = recDragSV.value.dx;
+    // مسافة السحب باتجاه الإلغاء (يمين في العربي، شمال في الإنجليزي)
+    const adx = isRTL ? dx : -dx;
     return {
-      opacity: dx < -10 ? Math.min(1, -dx / -REC_CANCEL_DX) : 0,
-      transform: [{ scale: 1 + Math.min(1, -dx / 60) * 0.3 }],
+      opacity: adx > 10 ? Math.min(1, adx / REC_CANCEL_DX) : 0,
+      transform: [{ scale: 1 + Math.min(1, adx / 60) * 0.3 }],
     };
   });
   const lockAnimStyle = useAnimatedStyle(() => {
@@ -501,6 +511,13 @@ export default function ChatScreen() {
     // جهّز التسجيل اللي جاي في الخلفية دلوقتي (الإذن ممنوح خلاص)
     // فالضغطة اللي بعدها تبدأ فورًا
     void ensureRecPrepared().catch(() => {});
+    // تسجيل أقل من ثانية بيتلغي بدل ما يتبعت (كان بيوصل 0:00/0:01) —
+    // تلميح خفيف بدل حوار منبثق
+    if (recState.durationMillis < 1000) {
+      setShortRecHint(true);
+      setTimeout(() => setShortRecHint(false), 2500);
+      return;
+    }
     const dur = Math.max(1, Math.round(recState.durationMillis / 1000));
     await sendRecording(uri, dur);
   };
@@ -604,7 +621,10 @@ export default function ChatScreen() {
     void startRecording();
   };
   const recMove = (e: GestureResponderEvent) => {
-    const dx = Math.min(0, e.nativeEvent.pageX - recStartPosRef.current.x);
+    const rawDx = e.nativeEvent.pageX - recStartPosRef.current.x;
+    // السحب للإلغاء مع اتجاه الواجهة: في العربي (المايك شمال) لليمين،
+    // وفي الإنجليزي (المايك يمين) لليسار — السحب في الاتجاه التاني بيتجاهل
+    const dx = isRTL ? Math.max(0, rawDx) : Math.min(0, rawDx);
     const dy = Math.min(0, e.nativeEvent.pageY - recStartPosRef.current.y);
     // SharedValue بس — مفيش setState هنا، فالشاشة كلها مبتتعدش رسمها
     // مع كل حركة إصبع؛ الأيقونات بتتحدث من الـ SharedValue مباشرة
@@ -614,7 +634,8 @@ export default function ChatScreen() {
   const recRelease = (e: GestureResponderEvent) => {
     setMicPressed(false);
     const pressMs = Date.now() - recPressAtRef.current;
-    const dx = Math.min(0, e.nativeEvent.pageX - recStartPosRef.current.x);
+    const rawDx = e.nativeEvent.pageX - recStartPosRef.current.x;
+    const dx = isRTL ? Math.max(0, rawDx) : Math.min(0, rawDx);
     const dy = Math.min(0, e.nativeEvent.pageY - recStartPosRef.current.y);
     // ضغطة سريعة (أقل من 200ms): مش إرسال ولا إلغاء — التسجيل بيكمل في
     // واجهة النقرة. من غير ما تلغي جلسة البدء عشان لو التسجيل لسه بيجهز
@@ -627,8 +648,8 @@ export default function ChatScreen() {
     }
     // الإفلات بيلغي جلسة البدء — أي record() متأخر مش هيتنفذ
     recSessionRef.current += 1;
-    // سحب حر: أي سحب واضح لليسار + إفلات = إلغاء، من غير مكان معين
-    if (dx <= REC_CANCEL_DX) {
+    // سحب حر: أي سحب واضح باتجاه الإلغاء + إفلات = إلغاء، من غير مكان معين
+    if (isCancelDx(dx)) {
       void cancelRecording();
       return;
     }
@@ -652,7 +673,7 @@ export default function ChatScreen() {
       if (recorder.isRecording) setPhase('tap');
       return;
     }
-    if (recDragSV.value.dx <= REC_CANCEL_DX) {
+    if (isCancelDx(recDragSV.value.dx)) {
       void cancelRecording();
       return;
     }
@@ -1146,10 +1167,10 @@ export default function ChatScreen() {
               marginBottom: gap,
             }}
             renderLeftActions={(progress) => (
-              <SwipeReplyArrow progress={progress} glyph="↩" style={styles.replyAction} />
+              <SwipeReplyArrow progress={progress} glyph={isRTL ? '↪' : '↩'} style={styles.replyAction} />
             )}
             renderRightActions={(progress) => (
-              <SwipeReplyArrow progress={progress} glyph="↪" style={styles.replyAction} />
+              <SwipeReplyArrow progress={progress} glyph={isRTL ? '↩' : '↪'} style={styles.replyAction} />
             )}
             onSwipeableOpen={() => {
               startReply(item);
@@ -1182,6 +1203,7 @@ export default function ChatScreen() {
       otherAvatar,
       other,
       styles,
+      isRTL,
     ],
   );
 
@@ -1660,6 +1682,22 @@ export default function ChatScreen() {
           resizeMode="cover"
         />
       ) : null}
+      {/* تعتيم خفيف بلون الثيم فوق الخلفية — عشان نص الرسايل المستلمة
+          يفضل مقروء حتى لو الخلفية المختارة غامقة والثيم فاتح (أو العكس) */}
+      {bgSource ? (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor:
+                resolved === 'light'
+                  ? 'rgba(250, 247, 255, 0.45)'
+                  : 'rgba(3, 0, 20, 0.4)',
+            },
+          ]}
+        />
+      ) : null}
       {/* الترويسة — شريط زجاجي عائم زي الصورة المرجعية؛
           مسافة الأمان الحقيقية بتاعة الجهاز (مش رقم ثابت) */}
       <View style={[styles.header, { marginTop: insets.top + spacing.sm }]}>
@@ -1913,8 +1951,11 @@ export default function ChatScreen() {
               />
             </View>
           ) : null}
+          {shortRecHint ? (
+            <Text style={styles.tooShortHint}>{t('chat.recTooShort')}</Text>
+          ) : null}
           <View style={styles.composer}>
-            {/* أيقونة السلة بتظهر وتكبر كل ما السحب لليسار يقرّب من الإلغاء —
+            {/* أيقونة السلة بتظهر وتكبر كل ما السحب باتجاه الإلغاء يقرّب منه —
                 بتتحدث من الـ SharedValue من غير إعادة رسم */}
             {phase === 'recording' ? (
               <Reanimated.View
@@ -1954,7 +1995,7 @@ export default function ChatScreen() {
                       ? t('chat.releaseToCancel')
                       : recZone === 'lock'
                         ? t('chat.releaseToLock')
-                        : t('chat.recHint')}
+                        : t(isRTL ? 'chat.recHintRtl' : 'chat.recHint')}
                   </Text>
                 </View>
               ) : (
@@ -2680,7 +2721,11 @@ const PendingBubble = React.memo(function PendingBubble({ item }: { item: Outbox
   );
 });
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => {
+  // اتجاه الواجهة وقت إنشاء الستايلات — بيتعاد حسابه مع كل ريندر
+  // (وبتتغير اللغة بيعيد تحميل الشجرة كلها فالقيمة بتتحدث)
+  const rtl = I18nManager.isRTL;
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   /** الترويسة: شريط زجاجي عائم (مش لازق في السقف) زي الصورة المرجعية —
    *  الـ BlurView جوّاه، والخلفية الشفافة احتياطي لو الـ blur مش متاح */
@@ -2717,7 +2762,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   reactionBadge: {
     position: 'absolute',
     bottom: 2,
-    left: 2,
+    start: 2,
     backgroundColor: 'rgba(0,0,0,0.55)',
     borderWidth: 1,
     borderColor: colors.stroke,
@@ -2774,7 +2819,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: spacing.sm,
     paddingVertical: 13,
   },
-  sheetRowText: { color: colors.text, fontSize: fonts.sizes.md, textAlign: 'left' },
+  sheetRowText: { color: colors.text, fontSize: fonts.sizes.md, textAlign: rtl ? 'right' : 'left' },
   replyAction: {
     width: 52,
     alignItems: 'center',
@@ -2877,7 +2922,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: 3,
   },
   deleted: { color: colors.faint, fontStyle: 'italic', fontSize: fonts.sizes.sm },
-  time: { color: colors.muted, fontSize: 10, marginTop: 3, textAlign: 'right' },
+  time: { color: colors.muted, fontSize: 10, marginTop: 3, textAlign: rtl ? 'left' : 'right' },
   mediaImg: { width: 210, height: 210, borderRadius: radius.md },
   videoOverlay: {
     color: colors.white,
@@ -2913,7 +2958,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: 9,
     maxHeight: 110,
     fontSize: fonts.sizes.md,
-    textAlign: 'left',
+    textAlign: rtl ? 'right' : 'left',
     // على الويب: من غير الإطار المستطيل اللي المتصفح بيرسمه حوالين
     // حقل الكتابة لما ياخد تركيز — يفضل بس خط المؤشر الوامض زي واتساب.
     // outlineWidth: 0 لوحده ما شالوش (اتأكدنا لايف إن المستطيل لسه بيظهر)
@@ -3046,10 +3091,18 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   recHint: { color: colors.muted, fontSize: fonts.sizes.sm, flex: 1 },
-  /** أيقونة السلة اللي بتظهر على الشمال كل ما السحب يقرّب من الإلغاء */
+  /** تلميح التسجيل القصير أوي — فوق شريط الكتابة، بيختفي لوحده */
+  tooShortHint: {
+    color: colors.danger,
+    fontSize: fonts.sizes.sm,
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  /** أيقونة السلة اللي بتظهر على جهة الإلغاء كل ما السحب يقرّب منه
+   *  (start = شمال في الإنجليزي، يمين في العربي — مع اتجاه الواجهة) */
   recCancelIcon: {
     position: 'absolute',
-    left: spacing.md,
+    start: spacing.md,
     top: '50%',
     marginTop: -13,
     zIndex: 1,
@@ -3139,4 +3192,5 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.stroke,
   },
-});
+  });
+};

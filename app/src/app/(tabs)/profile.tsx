@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useMemo } from 'react';
-import { Platform, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { I18nManager, Platform, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -449,7 +449,8 @@ function InfoRow({
             fontSize: fonts.sizes.sm,
             fontFamily: mono ? 'monospace' : undefined,
             flexShrink: 1,
-            textAlign: 'right',
+            // قيمة الصف في آخره: يمين في الإنجليزي، شمال في العربي
+            textAlign: I18nManager.isRTL ? 'left' : 'right',
           }}>
           {value}
         </Text>

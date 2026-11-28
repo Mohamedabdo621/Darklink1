@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { I18nManager, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -97,7 +97,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     padding: spacing.md,
     minHeight: 110,
     textAlignVertical: 'top',
-    textAlign: 'left',
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
     marginBottom: spacing.md,
   },
 });

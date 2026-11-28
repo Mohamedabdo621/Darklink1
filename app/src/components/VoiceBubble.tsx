@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import { File, Paths } from 'expo-file-system';
 import { mediaSignedUrl } from '../services/chat';
 import { fonts, radius, spacing } from '../theme';
 
@@ -12,6 +13,17 @@ const SPEEDS = [1, 1.5, 2];
 function fmt(sec: number) {
   const s = Math.max(0, Math.floor(sec));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** اسم ملف الكاش لرسالة صوتية — مفتاحه الـ bucket + مسار التخزين
+ *  (مش الرابط الموقّع، لأنه بينتهي). مثال:
+ *  voice-notes/conv/u1/123.m4a ← voice-voice-notes-conv-u1-123.m4a */
+function cacheFileFor(bucket: string, mediaPath: string): File {
+  const safe = `${bucket}/${mediaPath}`
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 120);
+  return new File(Paths.cache, `voice-${safe}`);
 }
 
 /** فقاعة رسالة صوتية: تشغيل/إيقاف + تقدم + سرعة 1x/1.5x/2x + موجة صوتية
@@ -33,15 +45,72 @@ export default function VoiceBubble({
    *  (بنفسجي 30% على خلفية فاتحة) — في الفاتح أغمق وأقوى، وفي الغامق
    *  زي ما هي. الموجة اللي اتسمعت بتفضل بلون الـ accent. */
   const [uri, setUri] = useState<string | null>(null);
+  /** true لحد ما يتجهز مصدر الصوت (ملف كاش أو رابط موقّع) — زرار
+   *  التشغيل بيعرض ActivityIndicator في الفترة دي */
+  const [preparing, setPreparing] = useState(true);
   const [speedIdx, setSpeedIdx] = useState(0);
   const player = useAudioPlayer(uri ? { uri } : null);
   const status = useAudioPlayerStatus(player);
 
+  // مصدر الصوت: ملف محلي في كاش التطبيق لو موجود، وإلا نزّل الرابط
+  // الموقّع مرة واحدة لـ Paths.cache وأعد استخدامه بعدها. الرابط نفسه
+  // بينتهي (ساعة) فمش بيتخزن — اللي بيتخزن بايتات الملف بس.
+  // لو التنزيل فشل (رابط منتهي/انقطاع نت) بنرجع للبث من الرابط مباشرة.
   useEffect(() => {
     let live = true;
-    mediaSignedUrl(bucket, mediaPath).then((u) => {
-      if (live) setUri(u);
-    });
+    (async () => {
+      // إعادة التهيئة هنا (داخل الكولباك مش في جسم الـ effect مباشرة)
+      // عشان تغيير الرسالة يرجّع زرار التشغيل لحالة التحميل
+      setUri(null);
+      setPreparing(true);
+      if (!mediaPath) {
+        setPreparing(false);
+        return;
+      }
+      try {
+        if (Platform.OS !== 'web') {
+          const cached = cacheFileFor(bucket, mediaPath);
+          if (cached.exists && cached.size > 0) {
+            if (live) {
+              setUri(cached.uri);
+              setPreparing(false);
+            }
+            return;
+          }
+        }
+        const signed = await mediaSignedUrl(bucket, mediaPath);
+        if (!live) return;
+        if (!signed) {
+          setPreparing(false);
+          return;
+        }
+        if (Platform.OS === 'web') {
+          // الويب: مفيش كاش ملفات دائم — بث من الرابط زي قبل كده
+          setUri(signed);
+          setPreparing(false);
+          return;
+        }
+        try {
+          const dest = cacheFileFor(bucket, mediaPath);
+          const downloaded = await File.downloadFileAsync(signed, dest, {
+            idempotent: true,
+          });
+          if (live) setUri(downloaded.uri);
+        } catch {
+          // تنزيل جزئي/تالف على أندرويد ممكن يفضل في مكانه — امسحه
+          // عشان المحاولة الجاية تنزّل من جديد بدل ما تشغّل ملف بايظ
+          try {
+            cacheFileFor(bucket, mediaPath).delete();
+          } catch {
+            // التجاهل آمن — البث من الرابط هو البديل
+          }
+          if (live) setUri(signed);
+        }
+        if (live) setPreparing(false);
+      } catch {
+        if (live) setPreparing(false);
+      }
+    })();
     return () => {
       live = false;
     };
@@ -59,7 +128,7 @@ export default function VoiceBubble({
   }, [durationSec]);
 
   const toggle = () => {
-    if (!uri) return;
+    if (!uri || preparing) return;
     if (status.playing) player.pause();
     else {
       if (status.currentTime >= duration - 0.2) player.seekTo(0);
@@ -75,8 +144,15 @@ export default function VoiceBubble({
 
   return (
     <View style={styles.row}>
-      <TouchableOpacity onPress={toggle} style={[styles.playBtn, mine && styles.playBtnMine]}>
-        <Ionicons name={status.playing ? 'pause' : 'play'} size={16} color={colors.white} />
+      <TouchableOpacity
+        onPress={toggle}
+        disabled={preparing}
+        style={[styles.playBtn, mine && styles.playBtnMine]}>
+        {preparing ? (
+          <ActivityIndicator size="small" color={colors.white} />
+        ) : (
+          <Ionicons name={status.playing ? 'pause' : 'play'} size={16} color={colors.white} />
+        )}
       </TouchableOpacity>
       <View style={styles.bars}>
         {bars.map((h, i) => (

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   Animated,
+  I18nManager,
   Image,
   Modal,
   Pressable,
@@ -592,7 +593,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     flex: 1,
     color: colors.white,
     fontSize: fonts.sizes.md,
-    textAlign: 'left',
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   sheetBackdrop: {
     flex: 1,

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Redirect } from 'expo-router';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth, getCachedProfile } from '../contexts/AuthContext';
 import { Logo, NeonButton } from '../components/ui';
 
 
@@ -14,12 +14,29 @@ export default function Index() {
   const { session, profile, loading, profileError, refreshProfile, signOut } =
     useAuth();
   const [seen, setSeen] = useState<boolean | null>(null);
+  // تاريخ الميلاد المحفوظ محليًا من آخر جلب ناجح — احتياطي للبوابة:
+  // لو الجلب الحالي فشل/اتأخر والنسخة المحفوظة فيها تاريخ ميلاد،
+  // مفيش تحويل لصفحة إكمال البيانات. cacheReady=false يعني لسه بنقرا.
+  const [cachedBirthdate, setCachedBirthdate] = useState<string | null>(null);
+  const [cacheReady, setCacheReady] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    getCachedProfile().then((p) => {
+      if (!live) return;
+      setCachedBirthdate(p?.birthdate ?? null);
+      setCacheReady(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   useEffect(() => {
     AsyncStorage.getItem(ONBOARDING_KEY).then((v) => setSeen(v === '1'));
   }, []);
 
-  if (loading || seen === null) {
+  if (loading || seen === null || !cacheReady) {
     return (
       <View
         style={{
@@ -68,8 +85,9 @@ export default function Index() {
   }
   // ملفه ناقص تاريخ الميلاد → صفحة إكمال البيانات قبل الدخول
   // (بس لما الجلب يكون نجح — profile موجود من غير birthdate، أو مفيش
-  // صف أصلًا من غير خطأ جلب)
-  if (session && !profile?.birthdate)
+  // صف أصلًا من غير خطأ جلب) — ولو النسخة المحفوظة محليًا فيها
+  // تاريخ ميلاد، مفيش تحويل أصلًا (الجلب الحالي غالبًا فشل/اتأخر).
+  if (session && !profile?.birthdate && !cachedBirthdate)
     return <Redirect href="/complete-profile" />;
   if (session) return <Redirect href="/(tabs)/home" />;
   return <Redirect href="/(auth)/login" />;

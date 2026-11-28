@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { I18nManager, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -279,7 +279,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     // والـ cast ده عشان tsc يعدّيها.
     ...( { caretColor: colors.text } as unknown as object ),
   },
-  counter: { color: colors.faint, fontSize: fonts.sizes.xs, textAlign: 'right', marginTop: 4 },
+  counter: { color: colors.faint, fontSize: fonts.sizes.xs, textAlign: I18nManager.isRTL ? 'left' : 'right', marginTop: 4 },
   preview: {
     width: '100%',
     height: 220,

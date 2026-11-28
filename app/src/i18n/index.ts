@@ -18,7 +18,8 @@ export async function storedLanguage(): Promise<Language | null> {
   return v === 'ar' || v === 'en' ? v : null;
 }
 
-/** يضبط اتجاه الواجهة (RTL للعربية) — يحتاج إعادة تشغيل ليكتمل أثره على التخطيط */
+/** يضبط اتجاه الواجهة (RTL للعربية) — الروت لايأوت بيسمع languageChanged
+ *  وبيعاد بناء الـ Stack فورًا، فمبقاش محتاج إعادة تشغيل */
 export function applyDirection(lang: Language) {
   const rtl = lang === 'ar';
   I18nManager.allowRTL(true);

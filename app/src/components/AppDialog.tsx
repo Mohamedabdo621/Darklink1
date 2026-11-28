@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useSyncExternalStore, useMemo } from 'react';
 import {
+  I18nManager,
   Modal,
   Platform,
   Pressable,
@@ -233,7 +234,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 11,
     marginTop: spacing.md,
-    textAlign: 'left',
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   rowBtns: {
     flexDirection: 'row',

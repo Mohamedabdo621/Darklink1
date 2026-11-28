@@ -1,9 +1,9 @@
 // DARKLINK — بوابة قفل التطبيق (v1.6.0)
 // بتظهر شاشة القفل فوق كل الشاشات لما القفل مفعّل: عند فتح التطبيق
-// أو الرجوع من الخلفية. الفتح بالبصمة (لو متاحة ومسجلة) أو برمز PIN.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+// البارد بس — مش عند الرجوع من الخلفية. الفتح بالبصمة (لو متاحة
+// ومسجلة) أو برمز PIN.
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AppState,
   StyleSheet,
   Text,
   TextInput,
@@ -36,7 +36,6 @@ export function AppLockGate() {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const wasBackground = useRef(false);
   const profileId = profile?.id;
 
   // حالة القفل عند فتح التطبيق (بعد تحميل البروفايل)
@@ -66,22 +65,6 @@ export function AppLockGate() {
       live = false;
     };
   }, [profileId]);
-
-  // الرجوع من الخلفية يقفل التطبيق تاني
-  useEffect(() => {
-    if (!enabled || !profileId) return;
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'background' || state === 'inactive') {
-        wasBackground.current = true;
-      } else if (state === 'active' && wasBackground.current) {
-        wasBackground.current = false;
-        setPin('');
-        setError('');
-        setLocked(true);
-      }
-    });
-    return () => sub.remove();
-  }, [enabled, profileId]);
 
   const tryBiometric = useCallback(async () => {
     if (busy) return;

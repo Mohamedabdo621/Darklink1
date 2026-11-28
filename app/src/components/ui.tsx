@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  I18nManager,
   Image,
   StyleSheet,
   Switch,
@@ -31,16 +32,6 @@ import {
   type ThemeColors,
 } from '../theme';
 
-// نجوم خلفية ثابتة (مولّدة رياضياً — نفس الشكل في كل مرة)
-const STARS = Array.from({ length: 42 }, (_, i) => {
-  const x = (i * 37.7 + 11) % 100;
-  const y = (i * 53.3 + 7) % 100;
-  const size = (i % 3) + 1;
-  const opacity = 0.2 + ((i * 13) % 10) / 18;
-  const accent = i % 7 === 0;
-  return { left: `${x}%`, top: `${y}%`, size, opacity, accent };
-});
-
 function FadeIn({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
   const [opacity] = useState(() => new Animated.Value(0));
   const [translate] = useState(() => new Animated.Value(8));
@@ -69,7 +60,8 @@ export function Screen({
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <SafeAreaView style={[styles.screen, style]}>
-      {/* الخلفية الموحّدة 2K لكل التطبيق (فاتحة/غامقة حسب الثيم) */}
+      {/* الخلفية الموحّدة لكل التطبيق (فاتحة/غامقة حسب الثيم) — الصورة
+          نفسها فيها التوهّج والدوائر الخافتة، فمفيش أي طبقات فوقها. */}
       <Image
         source={
           resolved === 'light'
@@ -79,26 +71,6 @@ export function Screen({
         style={[StyleSheet.absoluteFill, { width: '100%', height: '100%' }]}
         resizeMode="cover"
       />
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        {STARS.map((s, i) => (
-          <View
-            key={i}
-            style={{
-              position: 'absolute',
-              left: s.left as never,
-              top: s.top as never,
-              width: s.size,
-              height: s.size,
-              borderRadius: s.size / 2,
-              backgroundColor: s.accent ? colors.accent : colors.white,
-              opacity: s.opacity,
-            }}
-          />
-        ))}
-        <View style={styles.glowTop} />
-        <View style={styles.glowMid} />
-        <View style={styles.glowBottom} />
-      </View>
       <FadeIn>{children}</FadeIn>
     </SafeAreaView>
   );
@@ -342,35 +314,11 @@ export function Chip({ label, gold }: { label: string; gold?: boolean }) {
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => {
+  // اتجاه الواجهة وقت إنشاء الستايلات (بيتعاد مع كل ريندر)
+  const rtl = I18nManager.isRTL;
+  return StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing.lg },
-  glowTop: {
-    position: 'absolute',
-    top: -140,
-    start: -100,
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    backgroundColor: colors.glowTop,
-  },
-  glowMid: {
-    position: 'absolute',
-    top: '42%',
-    end: -140,
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: colors.glowMid,
-  },
-  glowBottom: {
-    position: 'absolute',
-    bottom: -160,
-    start: -60,
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    backgroundColor: colors.glowBottom,
-  },
   logo: {
     color: colors.text,
     fontWeight: fonts.weights.black,
@@ -431,7 +379,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.muted,
     fontSize: fonts.sizes.sm,
     marginBottom: 6,
-    textAlign: 'left',
+    textAlign: rtl ? 'right' : 'left',
   },
   input: {
     backgroundColor: colors.glass,
@@ -442,7 +390,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: fonts.sizes.md,
     paddingHorizontal: spacing.md,
     paddingVertical: 12,
-    textAlign: 'left',
+    textAlign: rtl ? 'right' : 'left',
   },
   inputFocused: {
     borderColor: colors.accent,
@@ -484,4 +432,5 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.glass,
   },
   chipText: { color: colors.primaryBright, fontSize: fonts.sizes.xs, fontWeight: fonts.weights.bold },
-});
+  });
+};

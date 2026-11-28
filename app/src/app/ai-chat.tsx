@@ -9,8 +9,8 @@
 // assets/nova-*.gif: greeting للترحيب، idle للهيدر وجنب رسايل
 // المساعد، thinking بدل مؤشر النقاط، error لحالة الفشل،
 // وanswering/celebrate/dontknow محجوزين لمحفزات جاية (مش
-// متوصلين لسلوك ظاهر لسه). الصورة الثابتة
-// darklink-ai-avatar.png لسه موجودة كبديل احتياطي.
+// متوصلين لسلوك ظاهر لسه). الصور الثابتة القديمة اتشالت —
+// كل الأفاتار من الـ GIFs دي بس.
 // thinking وerror بيتحملوا مسبقًا من أول ما الشاشة تتفتح (صورتين
 // مخفيتين 1×1) — لأنهم بيتركبوا بس لما يُحتاجوا، والملف ~1.9MB
 // مكانش بيلحق يتحمل قبل ما فقاعة الانتظار تختفي.
@@ -22,6 +22,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
+  I18nManager,
   Image,
   KeyboardAvoidingView,
   Linking,
@@ -193,7 +194,13 @@ export default function AiChat() {
         borderRadius: radius.md,
         padding: spacing.sm,
       },
-      blockquote: { backgroundColor: colors.glass, borderLeftColor: colors.primary, borderLeftWidth: 3 },
+      blockquote: {
+        backgroundColor: colors.glass,
+        // شريط الاقتباس في بداية السطر: شمال في الإنجليزي، يمين في العربي
+        ...(I18nManager.isRTL
+          ? { borderRightColor: colors.primary, borderRightWidth: 3 }
+          : { borderLeftColor: colors.primary, borderLeftWidth: 3 }),
+      },
       bullet_list: { color: colors.text },
       ordered_list: { color: colors.text },
       table: { borderColor: colors.glassBorder, borderWidth: 1, borderRadius: radius.sm },
@@ -665,7 +672,7 @@ const makeStyles = (colors: ThemeColors) =>
       paddingVertical: spacing.sm,
     },
     userText: { color: colors.white, fontSize: fonts.sizes.md, lineHeight: 22 },
-    userTime: { color: 'rgba(255,255,255,0.75)', fontSize: fonts.sizes.xs, marginTop: 4, textAlign: 'right' },
+    userTime: { color: 'rgba(255,255,255,0.75)', fontSize: fonts.sizes.xs, marginTop: 4, textAlign: I18nManager.isRTL ? 'left' : 'right' },
     aiMiniAvatar: { width: 30, height: 30, marginEnd: spacing.sm },
     thinkingGif: { width: 56, height: 56 },
     aiBubble: {

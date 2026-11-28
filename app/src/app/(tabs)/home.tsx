@@ -2,6 +2,7 @@ import React, { useCallback, useState, useMemo } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { TabSwipe } from '../../components/TabSwipe';
 import { useTranslation } from 'react-i18next';
 import { Chip, GlowCard, Logo, NeonButton, Screen } from '../../components/ui';
@@ -21,7 +22,7 @@ import {
 import { avatarSignedUrl } from '../../services/profile';
 import { fetchPublicProfile } from '../../services/social';
 import { fetchUnreadNotifications } from '../../services/wallet';
-import { fonts, lightShadowGlowSoft, radius, shadowGlowSoft, spacing, textGlow } from '../../theme';
+import { fonts, radius, spacing, textGlow } from '../../theme';
 
 import { useTheme } from '../../contexts/ThemeContext';
 import type { ThemeColors } from '../../theme';
@@ -309,37 +310,37 @@ export default function Home() {
         <Text style={styles.sectionTitle}>{t('home.shortcuts')}</Text>
         <View style={styles.grid}>
           <Shortcut
-            icon="compass-outline"
+            icon="compass"
             label={t('tabs.discover')}
             onPress={() => router.push('/(tabs)/discover')}
           />
           <Shortcut
-            icon="chatbubbles-outline"
+            icon="chatbubbles"
             label={t('tabs.chats')}
             onPress={() => router.push('/(tabs)/chats')}
           />
           <Shortcut
-            icon="pencil-outline"
+            icon="pencil"
             label={t('home.editProfile')}
             onPress={() => router.push('/edit-profile')}
           />
           <Shortcut
-            icon="settings-outline"
+            icon="settings"
             label={t('home.settings')}
             onPress={() => router.push('/settings')}
           />
           <Shortcut
-            icon="person-outline"
+            icon="person"
             label={t('tabs.profile')}
             onPress={() => router.push('/(tabs)/profile')}
           />
           <Shortcut
-            icon="trophy-outline"
+            icon="trophy"
             label={t('home.leaderboard')}
             onPress={() => router.push('/leaderboard')}
           />
           <Shortcut
-            icon="sparkles-outline"
+            icon="sparkles"
             label={t('ai.title')}
             onPress={() => router.push('/ai-chat')}
           />
@@ -364,15 +365,20 @@ function Shortcut({
 }) {
   const { colors, resolved } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // بلاطة زجاجية واحدة (نفس نظام GlowCard): BlurView فوق خلفية شفافة،
+  // من غير أي ظل/elevation — الـ elevation مع خلفية شفافة على أندرويد
+  // كان بيرسم مستطيل صلب (مربعات بيضاء في الفاتح / غامقة في الداكن).
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={[
-        styles.shortcut,
-        resolved === 'light' ? lightShadowGlowSoft : shadowGlowSoft,
-      ]}>
-      <Ionicons name={icon as never} size={28} color={colors.primaryBright} />
-      <Text style={styles.shortcutLabel}>{label}</Text>
+    <TouchableOpacity onPress={onPress} style={styles.shortcut}>
+      <BlurView
+        intensity={resolved === 'light' ? 20 : 32}
+        tint={resolved === 'light' ? 'light' : 'dark'}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={styles.shortcutContent}>
+        <Ionicons name={icon as never} size={28} color={colors.primaryBright} />
+        <Text style={styles.shortcutLabel}>{label}</Text>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -450,6 +456,10 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     borderColor: colors.glassBorder,
     borderRadius: radius.lg,
     paddingVertical: spacing.lg,
+    overflow: 'hidden',
+  },
+  shortcutContent: {
+    position: 'relative',
     alignItems: 'center',
     gap: spacing.sm,
   },

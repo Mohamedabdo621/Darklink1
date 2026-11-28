@@ -9,7 +9,7 @@ import AppDialog from '../components/AppDialog';
 import { AppLockGate } from '../components/AppLockGate';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import UpdateScreen from '../components/UpdateScreen';
-import { initI18n } from '../i18n';
+import i18n, { initI18n } from '../i18n';
 import { AuthProvider } from '../contexts/AuthContext';
 import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
 import { setNavReady, setupNotificationHandler } from '../services/push';
@@ -20,6 +20,20 @@ function ThemedRoot() {
   const { colors, resolved } = useTheme();
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
+  /** مفتاح إعادة بناء شجرة التنقل: تغيير اللغة بيقلب I18nManager.isRTL
+   *  (عن طريق applyDirection في setLanguage) لكن ريأكت نيتف مبيعيدش
+   *  تخطيط الشاشات الحالية — تغيير المفتاح ده بيعيد بناء الـ Stack
+   *  فورًا من غير إعادة تشغيل، ومن غير ما يلمس AuthProvider/ThemeProvider
+   *  (الجلسة والثيم بيفضلوا زي ما هم؛ بس حالة التنقل الحالية بتتصفّر). */
+  const [directionKey, setDirectionKey] = useState(0);
+
+  useEffect(() => {
+    const onLanguageChanged = () => setDirectionKey((k) => k + 1);
+    i18n.on('languageChanged', onLanguageChanged);
+    return () => {
+      i18n.off('languageChanged', onLanguageChanged);
+    };
+  }, []);
 
   // فحص التحديث مرة واحدة بعد التحميل — ساكت تمامًا لو مفيش نت أو
   // المفاتيح مش موجودة؛ على الويب بيرجع 'none' على طول.
@@ -48,6 +62,7 @@ function ThemedRoot() {
     <>
       <StatusBar style={resolved === 'light' ? 'dark' : 'light'} />
       <Stack
+        key={directionKey}
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: colors.bg },

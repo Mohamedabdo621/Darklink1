@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   FlatList,
+  I18nManager,
   Platform,
   StyleSheet,
   Text,
@@ -73,6 +74,8 @@ type SwipeRowHandle = {
  * اتجاهات السحب (مطابقة للسلوك الحي + مصدر المكتبة): السحب يمين يكشف
  * أزرار الشمال، والسحب شمال يكشف أزرار اليمين — فزرار الحظر على
  * الشمال (renderLeftActions) وزرار الحذف على اليمين (renderRightActions).
+ * في العربي (RTL) الاتجاهين بيتعكسوا: الحظر على اليمين والحذف على الشمال
+ * (شوف isRTL في renderLeftActions وhandleSwipeWillOpen).
  */
 function SwipeAction({
   progress,
@@ -134,6 +137,8 @@ function SwipeAction({
 
 export default function Chats() {
   const { colors, resolved } = useTheme();
+  /** اتجاه الواجهة — أزرار السحب بتتعكس معاه (شوف renderLeftActions) */
+  const isRTL = I18nManager.isRTL;
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const { profile: me } = useAuth();
@@ -318,7 +323,12 @@ export default function Chats() {
     confirmShown.current.set(item.conversationId, true);
     const clearFlag = () => confirmShown.current.delete(item.conversationId);
     const cancel = () => closeRow(item.conversationId);
-    if (direction === SwipeDirection.RIGHT) {
+    // اتجاه السحب بيتعكس مع الواجهة: يمين = حظر في الإنجليزي،
+    // شمال = حظر في العربي (والعكس للحذف/الإخفاء)
+    const isBlockDir = isRTL
+      ? direction === SwipeDirection.LEFT
+      : direction === SwipeDirection.RIGHT;
+    if (isBlockDir) {
       onBlock(item, { onCancel: cancel, onDone: clearFlag });
     } else {
       onHide(item, { onCancel: cancel, onDone: clearFlag });
@@ -453,11 +463,11 @@ export default function Chats() {
                 progress={progress}
                 dragX={dragX}
                 methods={methods}
-                kind="block"
+                kind={isRTL ? 'hide' : 'block'}
                 item={item}
                 styles={styles}
                 colors={colors}
-                onPress={onBlock}
+                onPress={isRTL ? onHide : onBlock}
                 handles={swipeHandles}
               />
             )}
@@ -466,11 +476,11 @@ export default function Chats() {
                 progress={progress}
                 dragX={dragX}
                 methods={methods}
-                kind="hide"
+                kind={isRTL ? 'block' : 'hide'}
                 item={item}
                 styles={styles}
                 colors={colors}
-                onPress={onHide}
+                onPress={isRTL ? onBlock : onHide}
                 handles={swipeHandles}
               />
             )}>
