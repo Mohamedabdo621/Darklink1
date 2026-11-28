@@ -24,6 +24,7 @@ import {
   FlatList,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -102,21 +103,47 @@ function fmtDate(iso: string): string {
   }
 }
 
-// عزل المقاطع اللاتينية (روابط bare + معرّفات @) داخل النص العربي
-// بعلامات LRI/PDI ‏(U+2066…U+2069)‏ — من غيرها خوارزمية الاتجاه
-// بتعكس ترتيبها على الشاشة. العلامات بتغلّف الحروف نفسها بس،
-// وعلامات الماركداون (**) بتفضل برّه العزل؛ وروابط الماركداون
-// [نص](رابط) مش بيتلمس اللي جوّا الأقواس لأنه الـ href مش نص ظاهر —
-// ولو اتغلّف هيتكسر لما يتداس عليه. النسخ بياخد النص الأصلي من غير علامات.
+// تجهيز نص رسايل المساعد قبل الماركداون — حاجتين:
+// 1) عزل المقاطع اللاتينية (روابط + معرّفات @) داخل النص العربي
+//    بعلامات LRI/PDI (U+2066…U+2069) — من غيرها خوارزمية الاتجاه
+//    بتعكس ترتيبها على الشاشة (كانت «@darklink.app» بتظهر
+//    «darklink.app@» واللينك بيظهر بسلاش في الأول ومقطوع).
+// 2) الروابط الـ bare بتتحوّل للينك ماركداون حقيقي [رابط](رابط) —
+//    النص الظاهر هو الرابط نفسه، عشان الضغطة عليه تفتحه (الماركداون
+//    من غير linkify مبيحوّلش الروابط العادية للينكات، فكانت بتظهر
+//    كنص بس مبيتضغطش). الـ href بيفضل نضيف من غير علامات عزل،
+//    والعزل بيتحط على النص الظاهر بس. الكود (``` و `...`) بيتساب
+//    زي ما هو. النسخ بياخد النص الأصلي من غير علامات.
 const LRI = '\u2066';
 const PDI = '\u2069';
 
 function isolateLtrRuns(text: string): string {
   return text.replace(
-    /\[([^\]]*)\]\(([^)]+)\)|(https?:\/\/[^\s)>\]]+)|(@[A-Za-z0-9._-]+)/g,
-    (match: string, _label: string | undefined, href: string | undefined, url: string | undefined, handle: string | undefined) => {
-      if (href !== undefined) return match; // رابط ماركداون — سيبه زي ما هو
-      return `${LRI}${url ?? handle ?? ''}${PDI}`;
+    /(```[\s\S]*?```)|(`[^`]*`)|(\[([^\]]*)\]\(([^)]+)\))|(https?:\/\/[^\s)>\]]+)|(@[A-Za-z0-9._-]+)/g,
+    (
+      match: string,
+      fence: string | undefined,
+      code: string | undefined,
+      _mdLink: string | undefined,
+      label: string | undefined,
+      href: string | undefined,
+      url: string | undefined,
+      handle: string | undefined,
+    ) => {
+      if (fence !== undefined || code !== undefined) return match; // كود — سيبه زي ما هو
+      if (href !== undefined) {
+        // رابط ماركداون — اعزل المقاطع اللاتينية في النص الظاهر بس، والـ href نضيف
+        const safeLabel = (label ?? '').replace(
+          /(https?:\/\/[^\s)>\]]+)|(@[A-Za-z0-9._-]+)/g,
+          (m: string) => `${LRI}${m}${PDI}`,
+        );
+        return `[${safeLabel}](${href})`;
+      }
+      if (url !== undefined) {
+        // رابط bare — حوّله للينك حقيقي نصه الظاهر هو الرابط نفسه
+        return `[${LRI}${url}${PDI}](${url})`;
+      }
+      return `${LRI}${handle ?? ''}${PDI}`;
     },
   );
 }
@@ -358,7 +385,15 @@ export default function AiChat() {
           <Image source={NOVA_GIFS.idle} style={styles.aiMiniAvatar} />
           <View style={[styles.aiBubble, { flexShrink: 1 }]}>
             <Text style={styles.aiLabel}>Darklink AI</Text>
-            <Markdown style={mdStyle}>{isolateLtrRuns(item.content)}</Markdown>
+            <Markdown
+              style={mdStyle}
+              onLinkPress={(url) => {
+                Linking.openURL(url);
+                return false;
+              }}
+            >
+              {isolateLtrRuns(item.content)}
+            </Markdown>
             <View style={styles.aiMeta}>
               <Text style={styles.aiTime}>{fmtTime(item.created_at)}</Text>
               <TouchableOpacity onPress={() => copyMessage(item)} hitSlop={8}>
