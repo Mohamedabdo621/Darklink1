@@ -11,6 +11,9 @@
 // وanswering/celebrate/dontknow محجوزين لمحفزات جاية (مش
 // متوصلين لسلوك ظاهر لسه). الصورة الثابتة
 // darklink-ai-avatar.png لسه موجودة كبديل احتياطي.
+// thinking وerror بيتحملوا مسبقًا من أول ما الشاشة تتفتح (صورتين
+// مخفيتين 1×1) — لأنهم بيتركبوا بس لما يُحتاجوا، والملف ~1.9MB
+// مكانش بيلحق يتحمل قبل ما فقاعة الانتظار تختفي.
 // ============================================================
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -355,6 +358,13 @@ export default function AiChat() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {/* تحميل مسبق: thinking وerror بيتركبوا بس لما يُحتاجوا (أثناء
+            انتظار الرد / عند الفشل)، والملف ~1.9MB مكانش بيلحق يتحمل
+            قبل ما الفقاعة تختفي — فبنحملهم من أول ما الشاشة تتفتح في
+            صورتين مخفيتين 1×1، عشان يبقوا في الكاش جاهزين للعرض فورًا.
+            (Image.prefetch مخصص للروابط البعيدة، مش للأصول المضمّنة.) */}
+        <Image source={NOVA_GIFS.thinking} style={styles.preloader} />
+        <Image source={NOVA_GIFS.error} style={styles.preloader} />
         {/* الهيدر الزجاجي العائم — زر رجوع دايمًا موجود */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn} hitSlop={8}>
@@ -526,6 +536,9 @@ const makeStyles = (colors: ThemeColors) =>
       borderRadius: radius.xl,
     },
     headerBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+    // مخفي تمامًا (1×1 + شفاف) لكنه بيجبر تحميل وفك ترميز الـ GIF —
+    // شوف التعليق فوق الهيدر.
+    preloader: { position: 'absolute', width: 1, height: 1, opacity: 0 },
     headerCenter: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1, justifyContent: 'center' },
     headerAvatar: { width: 40, height: 40 },
     headerTitle: { color: colors.text, fontSize: fonts.sizes.lg, fontWeight: fonts.weights.bold },
