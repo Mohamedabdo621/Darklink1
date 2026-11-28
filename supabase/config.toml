@@ -44,3 +44,6 @@ verify_jwt = true
 
 [functions.push-send]
 verify_jwt = false
+
+[functions.darklink-ai-chat]
+verify_jwt = true

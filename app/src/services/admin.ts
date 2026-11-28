@@ -213,3 +213,51 @@ export async function fetchAdminPostReports(): Promise<PostReportRow[]> {
   if (error || !data) return [];
   return data as PostReportRow[];
 }
+
+/** إحصاءات Darklink AI (للمشرف فقط — عبر RPC آمن) */
+export interface AdminAiStats {
+  total_messages: number;
+  today_messages: number;
+  users_count: number;
+  conversations_count: number;
+  errors_today: number;
+  providers_today: { provider: string; requests: number; tokens: number }[];
+}
+export async function fetchAdminAiStats(): Promise<AdminAiStats | null> {
+  const { data, error } = await supabase.rpc('admin_ai_stats');
+  if (error || !data) return null;
+  return data as AdminAiStats;
+}
+
+/** قاعدة معرفة الذكاء الاصطناعي (للمشرف فقط) */
+export interface AiKbRow {
+  id: string;
+  topic: string;
+  question: string;
+  answer: string;
+  keywords: string;
+  lang: string;
+  is_active: boolean;
+  updated_at: string;
+}
+export async function fetchAdminAiKb(): Promise<AiKbRow[]> {
+  const { data, error } = await supabase.rpc('admin_ai_kb_list');
+  if (error || !data) return [];
+  return data as AiKbRow[];
+}
+export async function upsertAdminAiKb(row: Omit<AiKbRow, 'updated_at'>): Promise<boolean> {
+  const { error } = await supabase.rpc('admin_ai_kb_upsert', {
+    p_id: row.id || null,
+    p_topic: row.topic,
+    p_question: row.question,
+    p_answer: row.answer,
+    p_keywords: row.keywords,
+    p_lang: row.lang,
+    p_is_active: row.is_active,
+  });
+  return !error;
+}
+export async function deleteAdminAiKb(id: string): Promise<boolean> {
+  const { error } = await supabase.rpc('admin_ai_kb_delete', { p_id: id });
+  return !error;
+}

@@ -338,6 +338,11 @@ export default function Home() {
             label={t('home.leaderboard')}
             onPress={() => router.push('/leaderboard')}
           />
+          <Shortcut
+            icon="sparkles-outline"
+            label={t('ai.title')}
+            onPress={() => router.push('/ai-chat')}
+          />
         </View>
         {/* مساحة سفلية على الويب بس: الشريط السفلي position:fixed فوق
             المحتوى، ومن غيرها آخر العناصر بتقعد تحته. */}

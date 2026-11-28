@@ -18,6 +18,9 @@ import { appAlert, appPrompt } from '../lib/dialog';
 import {
   awardContest,
   createPromo,
+  deleteAdminAiKb,
+  fetchAdminAiKb,
+  fetchAdminAiStats,
   fetchAdminConfig,
   fetchAdminOrders,
   fetchAdminPostReports,
@@ -33,9 +36,12 @@ import {
   setPromoActive,
   setReportStatus,
   setSuspended,
+  upsertAdminAiKb,
+  type AdminAiStats,
   type AdminReport,
   type AdminStats,
   type AdminUser,
+  type AiKbRow,
   type PaymentOrder,
   type PromoCode,
 } from '../services/admin';
@@ -46,7 +52,7 @@ import { fonts, radius, spacing } from '../theme';
 
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme';
-type Section = 'overview' | 'orders' | 'users' | 'reports' | 'referrals' | 'postReports' | 'promos' | 'settings' | 'errors';
+type Section = 'overview' | 'orders' | 'users' | 'reports' | 'referrals' | 'postReports' | 'promos' | 'settings' | 'errors' | 'ai';
 
 const CONFIG_FIELDS: { key: string; labelKey: string; numeric?: boolean }[] = [
   { key: 'vodafone_cash_number', labelKey: 'admin.cfgVodafone' },
@@ -95,6 +101,18 @@ export default function Admin() {
   // errors (سجل الأخطاء — قراءة فقط)
   const [errors, setErrors] = useState<ErrorLogRow[]>([]);
   const [errorsLoaded, setErrorsLoaded] = useState(false);
+  // Darklink AI
+  const [aiStats, setAiStats] = useState<AdminAiStats | null>(null);
+  const [aiKb, setAiKb] = useState<AiKbRow[]>([]);
+  const [aiKbForm, setAiKbForm] = useState({
+    id: '',
+    topic: '',
+    question: '',
+    answer: '',
+    keywords: '',
+    lang: 'ar',
+    is_active: true,
+  });
 
   const loadSection = useCallback(
     async (s: Section) => {
@@ -120,6 +138,11 @@ export default function Admin() {
       if (s === 'errors') {
         setErrors(await fetchRecentErrors(50));
         setErrorsLoaded(true);
+      }
+      if (s === 'ai') {
+        setAiStats(await fetchAdminAiStats());
+        setAiKb(await fetchAdminAiKb());
+        setConfig(await fetchAdminConfig());
       }
     },
     [orderStatus, query],
@@ -152,6 +175,7 @@ export default function Admin() {
     { key: 'postReports', label: t('admin.postReports'), icon: 'document-text-outline' },
     { key: 'promos', label: t('admin.promos'), icon: 'ticket-outline' },
     { key: 'settings', label: t('admin.settings'), icon: 'settings-outline' },
+    { key: 'ai', label: 'Darklink AI', icon: 'sparkles-outline' },
     { key: 'errors', label: 'سجل الأخطاء', icon: 'bug-outline' },
   ];
 
@@ -594,6 +618,236 @@ export default function Admin() {
             ))}
           </View>
         ) : null}
+        {section === 'ai' ? (
+          <View>
+            {/* إحصاءات */}
+            {aiStats ? (
+              <View style={{ gap: spacing.md, marginBottom: spacing.md }}>
+                <View style={styles.statGrid}>
+                  <GlowCard style={styles.stat}>
+                    <Text style={styles.statNum}>{aiStats.total_messages}</Text>
+                    <Text style={styles.statLabel}>إجمالي الردود</Text>
+                  </GlowCard>
+                  <GlowCard style={styles.stat}>
+                    <Text style={styles.statNum}>{aiStats.today_messages}</Text>
+                    <Text style={styles.statLabel}>ردود النهاردة</Text>
+                  </GlowCard>
+                  <GlowCard style={styles.stat}>
+                    <Text style={styles.statNum}>{aiStats.users_count}</Text>
+                    <Text style={styles.statLabel}>مستخدمين</Text>
+                  </GlowCard>
+                  <GlowCard style={styles.stat}>
+                    <Text style={styles.statNum}>{aiStats.conversations_count}</Text>
+                    <Text style={styles.statLabel}>محادثات</Text>
+                  </GlowCard>
+                  <GlowCard style={styles.stat}>
+                    <Text style={styles.statNum}>{aiStats.errors_today}</Text>
+                    <Text style={styles.statLabel}>أخطاء النهاردة</Text>
+                  </GlowCard>
+                </View>
+                {aiStats.providers_today.map((p) => (
+                  <View key={p.provider} style={styles.card}>
+                    <Text style={{ color: colors.text, fontWeight: '700' }}>{p.provider}</Text>
+                    <Text style={styles.meta}>
+                      {p.requests} طلب • {p.tokens} توكن (النهاردة)
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.empty}>…</Text>
+            )}
+
+            {/* إعدادات — أسماء المزودات والنماذج تظهر هنا فقط (للأدمن) */}
+            <Text style={styles.sectionSubTitle}>الإعدادات</Text>
+            <View style={[styles.card, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+              <Text style={{ color: colors.text, fontWeight: '700' }}>تفعيل Darklink AI</Text>
+              <Switch
+                value={config.ai_enabled === 'true'}
+                onValueChange={async (v) => {
+                  const val = v ? 'true' : 'false';
+                  const ok = await setAdminConfig('ai_enabled', val);
+                  if (ok) setConfig((c) => ({ ...c, ai_enabled: val }));
+                  else appAlert(t('common.error'), t('common.error'));
+                }}
+              />
+            </View>
+            {[
+              { key: 'ai_provider_order', label: 'ترتيب المزودات (مفصولة بفاصلة)' },
+              { key: 'ai_daily_limit_per_user', label: 'الحد اليومي لكل مستخدم (رسالة)', numeric: true },
+              { key: 'ai_model_gemini', label: 'نموذج Gemini' },
+              { key: 'ai_model_groq', label: 'نموذج Groq' },
+              { key: 'ai_max_input_chars', label: 'أقصى طول للرسالة (حرف)', numeric: true },
+              { key: 'ai_max_output_tokens', label: 'أقصى طول للرد (توكن)', numeric: true },
+            ].map((f) => (
+              <View key={f.key} style={{ marginBottom: spacing.md }}>
+                <Text style={styles.cfgLabel}>{f.label}</Text>
+                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                  <TextInput
+                    style={[styles.input, { flex: 1 }]}
+                    value={config[f.key] ?? ''}
+                    onChangeText={(v) => setConfig((c) => ({ ...c, [f.key]: v }))}
+                    placeholderTextColor={colors.faint}
+                    keyboardType={f.numeric ? 'number-pad' : 'default'}
+                  />
+                  <NeonButton
+                    title={t('common.save')}
+                    onPress={async () => {
+                      const ok = await setAdminConfig(f.key, config[f.key] ?? '');
+                      appAlert(ok ? '✓' : t('common.error'), ok ? t('admin.saved') : t('common.error'));
+                    }}
+                  />
+                </View>
+              </View>
+            ))}
+            <View style={{ marginBottom: spacing.md }}>
+              <Text style={styles.cfgLabel}>تعليمات الشخصية (System Prompt)</Text>
+              <TextInput
+                style={[styles.input, { minHeight: 110, textAlignVertical: 'top' }]}
+                value={config.ai_system_prompt ?? ''}
+                onChangeText={(v) => setConfig((c) => ({ ...c, ai_system_prompt: v }))}
+                placeholderTextColor={colors.faint}
+                multiline
+              />
+              <View style={{ marginTop: spacing.sm }}>
+                <NeonButton
+                  title={t('common.save')}
+                  onPress={async () => {
+                    const ok = await setAdminConfig('ai_system_prompt', config.ai_system_prompt ?? '');
+                    appAlert(ok ? '✓' : t('common.error'), ok ? t('admin.saved') : t('common.error'));
+                  }}
+                />
+              </View>
+            </View>
+
+            {/* قاعدة المعرفة */}
+            <Text style={styles.sectionSubTitle}>قاعدة المعرفة ({aiKb.length} موضوع)</Text>
+            <View style={{ gap: spacing.sm, marginBottom: spacing.md }}>
+              <TextInput
+                style={styles.input}
+                placeholder="الموضوع (مثال: gems)"
+                placeholderTextColor={colors.faint}
+                value={aiKbForm.topic}
+                onChangeText={(v) => setAiKbForm((f) => ({ ...f, topic: v }))}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="السؤال"
+                placeholderTextColor={colors.faint}
+                value={aiKbForm.question}
+                onChangeText={(v) => setAiKbForm((f) => ({ ...f, question: v }))}
+              />
+              <TextInput
+                style={[styles.input, { minHeight: 90, textAlignVertical: 'top' }]}
+                placeholder="الإجابة"
+                placeholderTextColor={colors.faint}
+                value={aiKbForm.answer}
+                onChangeText={(v) => setAiKbForm((f) => ({ ...f, answer: v }))}
+                multiline
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="كلمات مفتاحية (مفصولة بمسافات)"
+                placeholderTextColor={colors.faint}
+                value={aiKbForm.keywords}
+                onChangeText={(v) => setAiKbForm((f) => ({ ...f, keywords: v }))}
+              />
+              <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
+                <TouchableOpacity
+                  onPress={() => setAiKbForm((f) => ({ ...f, lang: 'ar' }))}
+                  style={[styles.chip, aiKbForm.lang === 'ar' && styles.chipActive]}>
+                  <Text style={{ color: aiKbForm.lang === 'ar' ? colors.white : colors.text, fontWeight: '700' }}>عربي</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setAiKbForm((f) => ({ ...f, lang: 'en' }))}
+                  style={[styles.chip, aiKbForm.lang === 'en' && styles.chipActive]}>
+                  <Text style={{ color: aiKbForm.lang === 'en' ? colors.white : colors.text, fontWeight: '700' }}>English</Text>
+                </TouchableOpacity>
+                <View style={{ flex: 1 }} />
+                <Text style={{ color: colors.text }}>مفعّل</Text>
+                <Switch
+                  value={aiKbForm.is_active}
+                  onValueChange={(v) => setAiKbForm((f) => ({ ...f, is_active: v }))}
+                />
+              </View>
+              <NeonButton
+                title={aiKbForm.id ? 'حفظ التعديل' : 'إضافة موضوع'}
+                onPress={async () => {
+                  if (!aiKbForm.topic.trim() || !aiKbForm.answer.trim()) {
+                    appAlert(t('common.error'), 'الموضوع والإجابة مطلوبين');
+                    return;
+                  }
+                  const ok = await upsertAdminAiKb({
+                    id: aiKbForm.id,
+                    topic: aiKbForm.topic.trim(),
+                    question: aiKbForm.question.trim(),
+                    answer: aiKbForm.answer.trim(),
+                    keywords: aiKbForm.keywords.trim(),
+                    lang: aiKbForm.lang,
+                    is_active: aiKbForm.is_active,
+                  });
+                  appAlert(ok ? '✓' : t('common.error'), ok ? t('admin.saved') : t('common.error'));
+                  if (ok) {
+                    setAiKbForm({ id: '', topic: '', question: '', answer: '', keywords: '', lang: 'ar', is_active: true });
+                    setAiKb(await fetchAdminAiKb());
+                  }
+                }}
+              />
+              {aiKbForm.id ? (
+                <NeonButton
+                  title={t('common.cancel')}
+                  onPress={() =>
+                    setAiKbForm({ id: '', topic: '', question: '', answer: '', keywords: '', lang: 'ar', is_active: true })
+                  }
+                />
+              ) : null}
+            </View>
+            {aiKb.map((row) => (
+              <View key={row.id} style={styles.card}>
+                <Text style={{ color: colors.text, fontWeight: '700' }}>
+                  {row.topic} • {row.lang} {row.is_active ? '' : '(متوقف)'}
+                </Text>
+                <Text style={styles.meta} numberOfLines={2}>
+                  {row.question}
+                </Text>
+                <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs }}>
+                  <TouchableOpacity
+                    style={[styles.smallBtn, { backgroundColor: colors.primary }]}
+                    onPress={() =>
+                      setAiKbForm({
+                        id: row.id,
+                        topic: row.topic,
+                        question: row.question,
+                        answer: row.answer,
+                        keywords: row.keywords,
+                        lang: row.lang,
+                        is_active: row.is_active,
+                      })
+                    }>
+                    <Text style={styles.smallBtnText}>{t('common.edit')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.smallBtn, { backgroundColor: colors.danger }]}
+                    onPress={() =>
+                      appAlert('حذف الموضوع؟', row.topic, [
+                        { text: t('common.cancel'), style: 'cancel' },
+                        {
+                          text: t('common.delete'),
+                          style: 'destructive',
+                          onPress: async () => {
+                            await deleteAdminAiKb(row.id);
+                            setAiKb(await fetchAdminAiKb());
+                          },
+                        },
+                      ])
+                    }>
+                    <Text style={styles.smallBtnText}>{t('common.delete')}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
         {section === 'errors' ? (
           <View>
             {!errorsLoaded ? (
@@ -696,4 +950,10 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: fonts.sizes.md,
   },
   cfgLabel: { color: colors.text, fontWeight: '700', marginBottom: spacing.xs },
+  sectionSubTitle: {
+    color: colors.text,
+    fontSize: fonts.sizes.lg,
+    fontWeight: fonts.weights.bold,
+    marginVertical: spacing.md,
+  },
 });
